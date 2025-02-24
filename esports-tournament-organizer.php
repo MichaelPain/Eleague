@@ -2,190 +2,137 @@
 /**
  * Plugin Name: eSports Tournament Organizer
  * Plugin URI: https://github.com/MichaelPain/Eleague
- * Description: Plugin completo per organizzare tornei eSports.
- * Version: 2.1.0
+ * Description: Plugin completo per organizzare tornei eSports con gestione team, bracket, check-in e integrazione API.
+ * Version: 2.3.0
  * Author: Il Tuo Nome
- * License: GPLv3
+ * Author URI: https://example.com
+ * License: GNU General Public License v3.0
+ * License URI: http://www.gnu.org/licenses/gpl-3.0.html
  * Text Domain: eto
  * Domain Path: /languages
+ * Requires at least: 6.4
+ * Requires PHP: 7.4
+ * Network: true
  */
 
-class ETO_Database {
-    const DB_VERSION = '2.0.0';
-    const DB_OPTION = 'eto_db_version';
+defined('ABSPATH') || exit;
 
-    /**
-     * Crea o aggiorna le tabelle del database
-     */
-    public static function install() {
-        global $wpdb;
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+// ==================================================
+// 1. DEFINIZIONE COSTANTI E CONFIGURAZIONI GLOBALI
+// ==================================================
+define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('ETO_DB_VERSION', '2.3.0');
+define('ETO_DEBUG', true);
+define('ETO_LOG_PATH', WP_CONTENT_DIR . '/eto-debug.log');
 
-        $charset_collate = $wpdb->get_charset_collate();
+// ==================================================
+// 2. INCLUDI FILE CORE
+// ==================================================
+$core_files = [
+    // Database e struttura base
+    'includes/class-database.php' => 'ETO_Database',
+    'includes/class-tournament.php' => 'ETO_Tournament',
+    'includes/class-team.php' => 'ETO_Team',
+    'includes/class-match.php' => 'ETO_Match',
+    
+    // Logica torneo
+    'includes/class-swiss.php' => 'ETO_Swiss',
+    
+    // Integrazioni esterne
+    'includes/class-riot-api.php' => 'ETO_Riot_API',
+    'includes/class-discord-integration.php' => 'ETO_Discord_Integration',
+    
+    // Sistema
+    'includes/class-user-roles.php' => 'ETO_User_Roles',
+    'includes/class-cron.php' => 'ETO_Cron',
+    'includes/class-emails.php' => 'ETO_Emails',
+    'includes/class-audit-log.php' => 'ETO_Audit_Log',
+    'includes/class-ajax-handler.php' => 'ETO_Ajax_Handler',
+    'includes/class-shortcodes.php' => 'ETO_Shortcodes',
+];
 
-        // 1. Tabella Tornei
-        $sql = "CREATE TABLE {$wpdb->prefix}eto_tournaments (
-            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            name VARCHAR(255) NOT NULL,
-            format ENUM('single_elimination','double_elimination','swiss') NOT NULL DEFAULT 'single_elimination',
-            game_type VARCHAR(50) NOT NULL DEFAULT 'lol',
-            start_date DATETIME NOT NULL,
-            end_date DATETIME NOT NULL,
-            min_players TINYINT(3) UNSIGNED NOT NULL DEFAULT 3,
-            max_players TINYINT(3) UNSIGNED NOT NULL DEFAULT 5,
-            checkin_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-            third_place_match BOOLEAN NOT NULL DEFAULT FALSE,
-            status ENUM('pending','active','completed','cancelled') NOT NULL DEFAULT 'pending',
-            created_by BIGINT(20) UNSIGNED NOT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            INDEX tournament_status_idx (status),
-            INDEX tournament_dates_idx (start_date, end_date)
-        ) ENGINE=InnoDB {$charset_collate};";
-        dbDelta($sql);
+foreach ($core_files as $file => $class) {
+    $path = ETO_PLUGIN_DIR . $file;
+    if (!file_exists($path)) {
+        error_log("ETO Error: Missing core file - $file");
+        wp_die(sprintf(__('File core mancante: %s. Contatta l\'amministratore.', 'eto'), $file));
+    }
+    require_once $path;
+    
+    if (!class_exists($class)) {
+        error_log("ETO Error: Class $class not found in $file");
+        wp_die(sprintf(__('Classe %s non trovata. Disinstalla e reinstalla il plugin.', 'eto'), $class));
+    }
+}
 
-        // 2. Tabella Team
-        $sql = "CREATE TABLE {$wpdb->prefix}eto_teams (
-            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            tournament_id BIGINT(20) UNSIGNED NOT NULL,
-            name VARCHAR(255) NOT NULL,
-            captain_id BIGINT(20) UNSIGNED NOT NULL,
-            wins MEDIUMINT(8) UNSIGNED NOT NULL DEFAULT 0,
-            losses MEDIUMINT(8) UNSIGNED NOT NULL DEFAULT 0,
-            points_diff MEDIUMINT(8) NOT NULL DEFAULT 0,
-            tiebreaker MEDIUMINT(8) NOT NULL DEFAULT 0,
-            status ENUM('pending','registered','checked_in','disqualified') NOT NULL DEFAULT 'pending',
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            FOREIGN KEY (tournament_id) REFERENCES {$wpdb->prefix}eto_tournaments(id) ON DELETE CASCADE,
-            INDEX team_tournament_idx (tournament_id),
-            INDEX team_status_idx (status),
-            INDEX team_ranking_idx (wins DESC, points_diff DESC, tiebreaker DESC)
-        ) ENGINE=InnoDB {$charset_collate};";
-        dbDelta($sql);
+// ==================================================
+// 3. REGISTRAZIONE HOOK PRINCIPALI
+// ==================================================
+register_activation_hook(__FILE__, function() {
+    ETO_Database::install();
+    ETO_User_Roles::setup_roles();
+    ETO_Cron::schedule_events();
+});
 
-        // 3. Tabella Membri Team
-        $sql = "CREATE TABLE {$wpdb->prefix}eto_team_members (
-            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            team_id BIGINT(20) UNSIGNED NOT NULL,
-            user_id BIGINT(20) UNSIGNED NOT NULL,
-            riot_id VARCHAR(255),
-            discord_tag VARCHAR(32),
-            nationality CHAR(2),
-            is_captain BOOLEAN NOT NULL DEFAULT FALSE,
-            joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            FOREIGN KEY (team_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
-            UNIQUE KEY user_team_unique (user_id, team_id),
-            INDEX member_team_idx (team_id)
-        ) ENGINE=InnoDB {$charset_collate};";
-        dbDelta($sql);
+register_deactivation_hook(__FILE__, function() {
+    ETO_Cron::clear_scheduled_events();
+    flush_rewrite_rules();
+});
 
-        // 4. Tabella Partite
-        $sql = "CREATE TABLE {$wpdb->prefix}eto_matches (
-            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            tournament_id BIGINT(20) UNSIGNED NOT NULL,
-            round VARCHAR(50) NOT NULL,
-            team1_id BIGINT(20) UNSIGNED NOT NULL,
-            team2_id BIGINT(20) UNSIGNED,
-            winner_id BIGINT(20) UNSIGNED,
-            screenshot_url VARCHAR(512),
-            reported_by BIGINT(20) UNSIGNED,
-            confirmed_by BIGINT(20) UNSIGNED,
-            confirmed_at DATETIME,
-            dispute_reason TEXT,
-            status ENUM('pending','completed','disputed') NOT NULL DEFAULT 'pending',
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            FOREIGN KEY (tournament_id) REFERENCES {$wpdb->prefix}eto_tournaments(id) ON DELETE CASCADE,
-            FOREIGN KEY (team1_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
-            FOREIGN KEY (team2_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
-            INDEX match_round_idx (round),
-            INDEX match_status_idx (status),
-            INDEX match_teams_idx (team1_id, team2_id)
-        ) ENGINE=InnoDB {$charset_collate};";
-        dbDelta($sql);
+register_uninstall_hook(__FILE__, function() {
+    ETO_Database::uninstall();
+    ETO_User_Roles::remove_roles();
+});
 
-        // 5. Tabella Audit Log
-        $sql = "CREATE TABLE {$wpdb->prefix}eto_audit_logs (
-            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            user_id BIGINT(20) UNSIGNED NOT NULL,
-            action_type VARCHAR(50) NOT NULL,
-            object_type VARCHAR(50) NOT NULL,
-            object_id BIGINT(20) UNSIGNED,
-            details TEXT,
-            ip_address VARCHAR(45) NOT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            INDEX log_action_idx (action_type),
-            INDEX log_object_idx (object_type, object_id),
-            INDEX log_user_idx (user_id)
-        ) ENGINE=InnoDB {$charset_collate};";
-        dbDelta($sql);
+// ==================================================
+// 4. INIZIALIZZAZIONE COMPONENTI
+// ==================================================
+add_action('plugins_loaded', function() {
+    // Localizzazione
+    load_plugin_textdomain(
+        'eto',
+        false,
+        dirname(plugin_basename(__FILE__)) . '/languages/'
+    );
 
-        // Aggiorna versione database
-        update_option(self::DB_OPTION, self::DB_VERSION);
+    // Verifica aggiornamenti database
+    ETO_Database::maybe_update_db();
 
-        // Aggiungi la colonna tiebreaker se mancante
-        if (!$wpdb->get_var("SHOW COLUMNS FROM {$wpdb->prefix}eto_teams LIKE 'tiebreaker'")) {
-            $wpdb->query("ALTER TABLE {$wpdb->prefix}eto_teams ADD tiebreaker MEDIUMINT(8) NOT NULL DEFAULT 0 AFTER points_diff");
-        }
+    // Caricamento moduli admin
+    if (is_admin()) {
+        require_once ETO_PLUGIN_DIR . 'admin/admin-pages.php';
+        require_once ETO_PLUGIN_DIR . 'admin/class-settings.php';
     }
 
-    /**
-     * Disinstalla il plugin rimuovendo tutte le tabelle
-     */
-    public static function uninstall() {
-        global $wpdb;
-        
-        $tables = [
-            'eto_audit_logs',
-            'eto_matches',
-            'eto_team_members',
-            'eto_teams',
-            'eto_tournaments'
-        ];
+    // Caricamento frontend
+    add_action('init', function() {
+        ETO_Shortcodes::init();
+        require_once ETO_PLUGIN_DIR . 'public/class-checkin.php';
+    });
 
-        foreach ($tables as $table) {
-            $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}{$table}");
+    // Caricamento widget
+    add_action('widgets_init', function() {
+        register_widget('ETO_Leaderboard_Widget');
+    });
+}, 20);
+
+// ==================================================
+// 5. GESTIONE ERRORI E DEBUG
+// ==================================================
+if (ETO_DEBUG) {
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+    ini_set('error_log', ETO_LOG_PATH);
+
+    add_action('admin_notices', function() {
+        if (file_exists(ETO_LOG_PATH)) {
+            echo '<div class="notice notice-warning"><p>';
+            printf(
+                __('Debug attivo. Log path: %s', 'eto'),
+                '<code>' . ETO_LOG_PATH . '</code>'
+            );
+            echo '</p></div>';
         }
-
-        delete_option(self::DB_OPTION);
-        delete_option('eto_riot_api_key');
-        delete_option('eto_email_settings');
-    }
-
-    /**
-     * Aggiorna lo schema del database se necessario
-     */
-    public static function maybe_update_db() {
-        $current_version = get_option(self::DB_OPTION, '1.0.0');
-        
-        if (version_compare($current_version, self::DB_VERSION, '<')) {
-            self::install();
-            
-            // Migrazioni specifiche per versione
-            if (version_compare($current_version, '2.0.0', '<')) {
-                self::migrate_to_v2();
-            }
-        }
-    }
-
-    /**
-     * Migrazione per la versione 2.0.0
-     */
-    private static function migrate_to_v2() {
-        global $wpdb;
-        
-        // Aggiungi colonna tiebreaker
-        if (!$wpdb->get_var("SHOW COLUMNS FROM {$wpdb->prefix}eto_teams LIKE 'tiebreaker'")) {
-            $wpdb->query("ALTER TABLE {$wpdb->prefix}eto_teams ADD tiebreaker MEDIUMINT(8) NOT NULL DEFAULT 0 AFTER points_diff");
-        }
-
-        // Aggiungi nuovi indici
-        $wpdb->query("CREATE INDEX team_ranking_idx ON {$wpdb->prefix}eto_teams (wins DESC, points_diff DESC, tiebreaker DESC)");
-    }
+    });
 }
