@@ -1,8 +1,6 @@
 <?php
 /**
  * Gestione avanzata dei tornei
- * @package eSports Tournament Organizer
- * @since 1.0.0
  */
 
 class ETO_Tournament {
@@ -12,13 +10,9 @@ class ETO_Tournament {
     const MIN_PLAYERS = 2;
     const MAX_PLAYERS = 20;
 
-    /**
-     * Crea un nuovo torneo con controlli completi
-     */
     public static function create($data) {
         global $wpdb;
 
-        // Validazione campi obbligatori
         $required_fields = [
             'name' => __('Nome torneo', 'eto'),
             'format' => __('Formato torneo', 'eto'),
@@ -34,7 +28,6 @@ class ETO_Tournament {
             }
         }
 
-        // Sanitizzazione dati
         $name = sanitize_text_field($data['name']);
         $format = self::sanitize_format($data['format']);
         $start_date = self::sanitize_date($data['start_date']);
@@ -44,7 +37,6 @@ class ETO_Tournament {
         $checkin_enabled = isset($data['checkin_enabled']) ? 1 : 0;
         $third_place_match = isset($data['third_place_match']) ? 1 : 0;
 
-        // Validazioni avanzate
         if ($format instanceof WP_Error) return $format;
         if ($start_date instanceof WP_Error) return $start_date;
         if ($end_date instanceof WP_Error) return $end_date;
@@ -67,7 +59,6 @@ class ETO_Tournament {
             );
         }
 
-        // Transazione database
         $wpdb->query('START TRANSACTION');
 
         try {
@@ -86,8 +77,8 @@ class ETO_Tournament {
                     'created_at' => current_time('mysql')
                 ],
                 [
-                    '%s', '%s', '%s', '%s', 
-                    '%d', '%d', '%d', '%d', 
+                    '%s', '%s', '%s', '%s',
+                    '%d', '%d', '%d', '%d',
                     '%s', '%s'
                 ]
             );
@@ -97,9 +88,8 @@ class ETO_Tournament {
             }
 
             $tournament_id = $wpdb->insert_id;
-
-            // Creazione automatica del bracket
             $bracket_result = self::generate_initial_bracket($tournament_id);
+            
             if (is_wp_error($bracket_result)) {
                 throw new Exception($bracket_result->get_error_message());
             }
@@ -109,15 +99,10 @@ class ETO_Tournament {
 
         } catch (Exception $e) {
             $wpdb->query('ROLLBACK');
-            return new WP_Error('db_error',
-                __('Errore durante la creazione del torneo: ', 'eto') . $e->getMessage()
-            );
+            return new WP_Error('db_error', __('Errore durante la creazione del torneo: ', 'eto') . $e->getMessage());
         }
     }
 
-    /**
-     * Genera il bracket iniziale per il torneo
-     */
     public static function generate_initial_bracket($tournament_id) {
         global $wpdb;
 
@@ -148,25 +133,20 @@ class ETO_Tournament {
             case self::FORMAT_SINGLE_ELIMINATION:
                 $bracket = self::generate_single_elimination_bracket($team_ids);
                 break;
-
-            case self::FORMAT_DOUBLE_ELIMINATION:
-                $bracket = self::generate_double_elimination_bracket($team_ids);
-                break;
-
+            
             case self::FORMAT_SWISS:
                 if (!class_exists('ETO_Swiss')) {
                     require_once ETO_PLUGIN_DIR . 'includes/class-swiss.php';
                 }
                 $bracket = ETO_Swiss::generate_initial_round($tournament_id);
                 break;
-
+            
             default:
                 return new WP_Error('invalid_format',
                     __('Formato del torneo non supportato', 'eto')
                 );
         }
 
-        // Salvataggio matches
         foreach ($bracket as $round => $matches) {
             foreach ($matches as $match) {
                 $wpdb->insert(
@@ -186,9 +166,6 @@ class ETO_Tournament {
         return true;
     }
 
-    /**
-     * Ottieni dettagli torneo
-     */
     public static function get($tournament_id) {
         global $wpdb;
 
@@ -201,17 +178,13 @@ class ETO_Tournament {
         );
     }
 
-    /**
-     * Genera bracket per Single Elimination
-     */
     private static function generate_single_elimination_bracket($team_ids) {
         $count = count($team_ids);
         $next_power = 2 ** ceil(log($count, 2));
         $byes = $next_power - $count;
 
-        // Aggiungi BYE se necessario
         for ($i = 0; $i < $byes; $i++) {
-            $team_ids[] = 0; // 0 = BYE
+            $team_ids[] = 0;
         }
 
         shuffle($team_ids);
@@ -236,16 +209,13 @@ class ETO_Tournament {
         return $matches;
     }
 
-    /**
-     * Sanitizza formato torneo
-     */
     private static function sanitize_format($format) {
         $allowed = [
             self::FORMAT_SINGLE_ELIMINATION,
             self::FORMAT_DOUBLE_ELIMINATION,
             self::FORMAT_SWISS
         ];
-
+        
         $clean_format = sanitize_key($format);
         
         if (!in_array($clean_format, $allowed)) {
@@ -257,9 +227,6 @@ class ETO_Tournament {
         return $clean_format;
     }
 
-    /**
-     * Sanitizza e valida una data
-     */
     private static function sanitize_date($date_string) {
         try {
             $date = new DateTime($date_string, new DateTimeZone(wp_timezone_string()));
@@ -276,9 +243,6 @@ class ETO_Tournament {
         }
     }
 
-    /**
-     * Conta i tornei per stato
-     */
     public static function count($status = null) {
         global $wpdb;
 
@@ -293,9 +257,6 @@ class ETO_Tournament {
         return $wpdb->get_var($params ? $wpdb->prepare($query, $params) : $query);
     }
 
-    /**
-     * Aggiorna lo stato di un torneo
-     */
     public static function update_status($tournament_id, $new_status) {
         global $wpdb;
 
@@ -316,13 +277,13 @@ class ETO_Tournament {
 
         return $result !== false;
     }
-}
 
-public static function get_all() {
-    global $wpdb;
-    
-    return $wpdb->get_results(
-        "SELECT * FROM {$wpdb->prefix}eto_tournaments 
-        ORDER BY start_date DESC"
-    );
+    public static function get_all() {
+        global $wpdb;
+
+        return $wpdb->get_results(
+            "SELECT * FROM {$wpdb->prefix}eto_tournaments 
+            ORDER BY start_date DESC"
+        );
+    }
 }
