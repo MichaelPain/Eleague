@@ -251,3 +251,13 @@ function eto_register_admin_styles() {
     );
 }
 add_action('admin_enqueue_scripts', 'eto_register_admin_styles');
+
+function eto_load_admin_styles() {
+    wp_enqueue_style(
+        'eto-admin-css', 
+        plugins_url('assets/css/admin.css', dirname(__FILE__)),
+        [],
+        filemtime(plugin_dir_path(dirname(__FILE__)) . 'assets/css/admin.css')
+    );
+}
+add_action('admin_enqueue_scripts', 'eto_load_admin_styles');
