@@ -12,7 +12,12 @@ class ETO_Swiss {
     public static function generate_initial_round($tournament_id) {
         global $wpdb;
 
-        // Recupera tutti i team iscritti al torneo
+        // Verifica esistenza tabella teams
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$wpdb->prefix}eto_teams'") != "{$wpdb->prefix}eto_teams") {
+            return new WP_Error('table_missing', __('Tabella teams non trovata', 'eto'));
+        }
+
+        // Recupera team ordinati casualmente
         $teams = $wpdb->get_results($wpdb->prepare(
             "SELECT * FROM {$wpdb->prefix}eto_teams 
             WHERE tournament_id = %d 
@@ -20,62 +25,77 @@ class ETO_Swiss {
             $tournament_id
         ));
 
-        // Aggiungi un BYE se il numero dei team è dispari
-        if (count($teams) % 2 !== 0) {
+        // Aggiungi BYE se necessario
+        $total_teams = count($teams);
+        if ($total_teams % 2 !== 0) {
             $teams[] = (object) ['id' => self::BYE_TEAM_ID];
+            $total_teams++;
         }
 
-        // Dividi i team in accoppiamenti
+        // Crea accoppiamenti
         $matches = [];
-        $total_teams = count($teams);
-        
         for ($i = 0; $i < $total_teams; $i += 2) {
+            $team1 = $teams[$i];
+            $team2 = $teams[$i + 1] ?? (object) ['id' => self::BYE_TEAM_ID];
+
             $matches[] = [
-                'team1_id' => $teams[$i]->id,
-                'team2_id' => $teams[$i + 1]->id ?? self::BYE_TEAM_ID
+                'team1_id' => $team1->id,
+                'team2_id' => $team2->id
             ];
         }
 
-        // Salva i match nel database
-        foreach ($matches as $match) {
-            $wpdb->insert(
-                "{$wpdb->prefix}eto_matches",
-                [
-                    'tournament_id' => $tournament_id,
-                    'round' => '1',
-                    'team1_id' => $match['team1_id'],
-                    'team2_id' => $match['team2_id']
-                ],
-                ['%d', '%s', '%d', '%d']
-            );
+        // Salva nel database con transazione
+        $wpdb->query('START TRANSACTION');
+        try {
+            foreach ($matches as $match) {
+                $wpdb->insert(
+                    "{$wpdb->prefix}eto_matches",
+                    [
+                        'tournament_id' => $tournament_id,
+                        'round' => '1',
+                        'team1_id' => $match['team1_id'],
+                        'team2_id' => $match['team2_id'],
+                        'status' => ($match['team2_id'] == self::BYE_TEAM_ID) ? 'completed' : 'pending'
+                    ],
+                    ['%d', '%s', '%d', '%d', '%s']
+                );
+            }
+            $wpdb->query('COMMIT');
+        } catch (Exception $e) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('db_error', $e->getMessage());
         }
 
         return $matches;
     }
 
     /**
-     * Aggiorna le statistiche Swiss dopo un match
+     * Aggiorna la classifica dopo un match
      */
     public static function update_standings($tournament_id, $winner_id, $loser_id) {
         global $wpdb;
 
-        // Aggiorna vittorie
+        // Aggiorna vincitore
         $wpdb->query($wpdb->prepare(
             "UPDATE {$wpdb->prefix}eto_teams
             SET wins = wins + 1,
                 points_diff = points_diff + 1
-            WHERE id = %d",
-            $winner_id
+            WHERE id = %d AND tournament_id = %d",
+            $winner_id,
+            $tournament_id
         ));
 
-        // Aggiorna sconfitte
-        $wpdb->query($wpdb->prepare(
-            "UPDATE {$wpdb->prefix}eto_teams
-            SET losses = losses + 1,
-                points_diff = points_diff - 1
-            WHERE id = %d",
-            $loser_id
-        ));
+        // Aggiorna perdente (se non è un BYE)
+        if ($loser_id != self::BYE_TEAM_ID) {
+            $wpdb->query($wpdb->prepare(
+                "UPDATE {$wpdb->prefix}eto_teams
+                SET losses = losses + 1,
+                    points_diff = points_diff - 1
+                WHERE id = %d AND tournament_id = %d",
+                $loser_id,
+                $tournament_id
+            ));
+        }
     }
 
     /**
@@ -84,7 +104,12 @@ class ETO_Swiss {
     public static function generate_next_round($tournament_id) {
         global $wpdb;
 
-        // Recupera la classifica corrente
+        // Verifica se esiste la tabella delle classifiche
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$wpdb->prefix}eto_teams'") != "{$wpdb->prefix}eto_teams") {
+            return new WP_Error('table_missing', __('Tabella teams non trovata', 'eto'));
+        }
+
+        // Recupera classifica attuale
         $standings = $wpdb->get_results($wpdb->prepare(
             "SELECT * FROM {$wpdb->prefix}eto_teams
             WHERE tournament_id = %d
@@ -92,47 +117,54 @@ class ETO_Swiss {
             $tournament_id
         ));
 
-        // Logica di accoppiamento
+        // Crea accoppiamenti
         $matches = [];
-        $skip = [];
+        $used_teams = [];
 
-        foreach ($standings as $key => $team) {
-            if (in_array($team->id, $skip)) continue;
+        foreach ($standings as $index => $team) {
+            if (in_array($team->id, $used_teams)) continue;
 
-            // Trova il prossimo avversario disponibile
-            for ($i = $key + 1; $i < count($standings); $i++) {
+            // Trova prossimo avversario disponibile
+            for ($i = $index + 1; $i < count($standings); $i++) {
                 $opponent = $standings[$i];
                 
-                if (!in_array($opponent->id, $skip)) {
+                if (!in_array($opponent->id, $used_teams)) {
                     $matches[] = [
                         'team1_id' => $team->id,
                         'team2_id' => $opponent->id
                     ];
-                    $skip[] = $team->id;
-                    $skip[] = $opponent->id;
+                    array_push($used_teams, $team->id, $opponent->id);
                     break;
                 }
             }
         }
 
-        // Salva i nuovi match
+        // Determina numero round
         $current_round = $wpdb->get_var($wpdb->prepare(
             "SELECT MAX(round) FROM {$wpdb->prefix}eto_matches 
             WHERE tournament_id = %d",
             $tournament_id
         )) + 1;
 
-        foreach ($matches as $match) {
-            $wpdb->insert(
-                "{$wpdb->prefix}eto_matches",
-                [
-                    'tournament_id' => $tournament_id,
-                    'round' => $current_round,
-                    'team1_id' => $match['team1_id'],
-                    'team2_id' => $match['team2_id']
-                ],
-                ['%d', '%s', '%d', '%d']
-            );
+        // Salva i match
+        $wpdb->query('START TRANSACTION');
+        try {
+            foreach ($matches as $match) {
+                $wpdb->insert(
+                    "{$wpdb->prefix}eto_matches",
+                    [
+                        'tournament_id' => $tournament_id,
+                        'round' => $current_round,
+                        'team1_id' => $match['team1_id'],
+                        'team2_id' => $match['team2_id']
+                    ],
+                    ['%d', '%s', '%d', '%d']
+                );
+            }
+            $wpdb->query('COMMIT');
+        } catch (Exception $e) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('db_error', $e->getMessage());
         }
 
         return $matches;
