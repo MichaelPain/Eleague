@@ -1,24 +1,119 @@
-function eto_admin_tournaments_page() {
+<?php
+// Pagina principale di amministrazione
+function eto_main_admin_page() {
     ?>
     <div class="wrap">
-        <h1>Gestione Tornei</h1>
+        <h1>Gestione Tornei eSports</h1>
+        
+        <div class="eto-dashboard">
+            <div class="eto-stats">
+                <h2>Statistiche</h2>
+                <ul>
+                    <li>Tornei attivi: <?php echo ETO_Tournament::count('active'); ?></li>
+                    <li>Team registrati: <?php echo ETO_Team::count(); ?></li>
+                    <li>Partite in attesa: <?php echo ETO_Match::count_pending(); ?></li>
+                </ul>
+            </div>
+            
+            <div class="eto-actions">
+                <a href="<?php echo admin_url('admin.php?page=eto-create-tournament'); ?>" class="button-primary">
+                    Crea nuovo torneo
+                </a>
+                <a href="<?php echo admin_url('admin.php?page=eto-pending-matches'); ?>" class="button">
+                    Verifica partite
+                </a>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+// Pagina creazione torneo
+function eto_create_tournament_page() {
+    ?>
+    <div class="wrap">
+        <h1>Crea nuovo torneo</h1>
+        <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
+            <input type="hidden" name="action" value="eto_create_tournament">
+            <?php wp_nonce_field('eto_create_tournament'); ?>
+            
+            <table class="form-table">
+                <tr>
+                    <th><label for="tournament_name">Nome torneo</label></th>
+                    <td><input type="text" name="tournament_name" required class="regular-text"></td>
+                </tr>
+                <tr>
+                    <th><label for="format">Formato</label></th>
+                    <td>
+                        <select name="format" id="format" required>
+                            <option value="single_elimination">Single Elimination</option>
+                            <option value="double_elimination">Double Elimination</option>
+                            <option value="swiss">Swiss System</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="start_date">Data inizio</label></th>
+                    <td><input type="datetime-local" name="start_date" required></td>
+                </tr>
+                <tr>
+                    <th><label for="end_date">Data fine</label></th>
+                    <td><input type="datetime-local" name="end_date" required></td>
+                </tr>
+                <tr>
+                    <th><label for="min_players">Membri minimi per team</label></th>
+                    <td><input type="number" name="min_players" min="1" max="10" required></td>
+                </tr>
+                <tr>
+                    <th><label for="max_players">Membri massimi per team</label></th>
+                    <td><input type="number" name="max_players" min="1" max="10" required></td>
+                </tr>
+                <tr>
+                    <th><label for="checkin_enabled">Check-in obbligatorio</label></th>
+                    <td><input type="checkbox" name="checkin_enabled" value="1"></td>
+                </tr>
+            </table>
+            <?php submit_button('Crea torneo'); ?>
+        </form>
+    </div>
+    <?php
+}
+
+// Pagina partite in sospeso
+function eto_pending_matches_page() {
+    $matches = ETO_Match::get_pending();
+    ?>
+    <div class="wrap">
+        <h1>Partite in attesa di conferma</h1>
         <table class="wp-list-table widefat fixed striped">
             <thead>
                 <tr>
-                    <th>Nome</th>
-                    <th>Data Inizio</th>
-                    <th>Stato</th>
+                    <th>ID Partita</th>
+                    <th>Team 1</th>
+                    <th>Team 2</th>
+                    <th>Screenshot</th>
                     <th>Azioni</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach (ETO_Tournament::get_all() as $tournament) : ?>
+                <?php foreach ($matches as $match): ?>
                 <tr>
-                    <td><?php echo esc_html($tournament->name); ?></td>
-                    <td><?php echo date('d/m/Y H:i', strtotime($tournament->start_date)); ?></td>
-                    <td><?php echo ucfirst($tournament->status); ?></td>
+                    <td><?php echo $match->id; ?></td>
+                    <td><?php echo ETO_Team::get($match->team1_id)->name; ?></td>
+                    <td><?php echo $match->team2_id ? ETO_Team::get($match->team2_id)->name : 'BYE'; ?></td>
                     <td>
-                        <a href="<?php echo admin_url('admin.php?page=eto-edit-tournament&id=' . $tournament->id); ?>">Modifica</a>
+                        <?php if ($match->screenshot_url): ?>
+                        <a href="<?php echo esc_url($match->screenshot_url); ?>" target="_blank">Visualizza</a>
+                        <?php else: ?>
+                        N/A
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <button class="button-primary eto-confirm-match" 
+                                data-match="<?php echo $match->id; ?>" 
+                                data-nonce="<?php echo wp_create_nonce('confirm_match_' . $match->id); ?>">
+                            Conferma
+                        </button>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -27,34 +122,3 @@ function eto_admin_tournaments_page() {
     </div>
     <?php
 }
-
-function eto_tournaments_admin_page() {
-    if (!current_user_can('eto_manage_tournaments')) {
-        wp_die(__('Accesso negato', 'eto-plugin'));
-    }
-    
-    // Solo utenti autorizzati vedono questa pagina
-}
-
-add_settings_field(
-    'enable_third_place',
-    'Abilita finale 3°/4° posto',
-    'checkbox_callback',
-    'eto_tournament_settings',
-    'eto_section_general',
-    ['label_for' => 'enable_third_place']
-);
-
-// File: admin/admin-pages.php
-$matches = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}eto_matches WHERE confirmed = 0");
-foreach ($matches as $match) {
-    echo "<img src='{$match->screenshot_path}' data-match-id='{$match->id}'>";
-    echo "<button class='confirm-match' data-nonce='" . wp_create_nonce('confirm_match_' . $match->id) . "'>Conferma</button>";
-}
-
-function eto_checkin_admin_page() {  
-    echo '<h2>Check-In in Sospeso</h2>';  
-    global $wpdb;  
-    $checkins = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}eto_checkins WHERE confirmed = 0");  
-    // Tabella con richieste check-in  
-}  

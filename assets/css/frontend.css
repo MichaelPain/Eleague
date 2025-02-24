@@ -1,0 +1,75 @@
+/* Stili generali */
+.eto-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: Arial, sans-serif;
+}
+
+/* Notifiche */
+.eto-notice {
+    background-color: #f0f8ff;
+    border-left: 4px solid #0073aa;
+    padding: 10px;
+    margin-bottom: 20px;
+    color: #0073aa;
+}
+
+.eto-error {
+    background-color: #fbeaea;
+    border-left: 4px solid #dc3232;
+    padding: 10px;
+    margin-bottom: 20px;
+    color: #dc3232;
+}
+
+/* Form */
+.eto-form input[type="text"],
+.eto-form input[type="number"],
+.eto-form select {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.eto-form button {
+    background-color: #0073aa;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.eto-form button:hover {
+    background-color: #005177;
+}
+
+/* Bracket */
+.bracket {
+    margin-top: 30px;
+}
+
+.bracket .match {
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+/* Profilo Utente */
+.eto-user-profile h2,
+.eto-user-profile h3 {
+    color: #333333;
+}
+
+.eto-user-profile ul {
+    list-style-type: disc;
+    padding-left: 20px;
+}
+
+.eto-user-profile ul li {
+    margin-bottom: 10px;
+}

@@ -1,0 +1,69 @@
+/* Stili generali per l'area admin */
+.wrap h1 {
+    font-size: 24px;
+    margin-bottom: 20px;
+    color: #23282d;
+}
+
+.wrap table.form-table th {
+    text-align: left;
+    font-weight: bold;
+    padding: 10px 15px;
+}
+
+.wrap table.form-table td {
+    padding: 10px 15px;
+}
+
+.wrap .button-primary {
+    background-color: #0073aa;
+    border-color: #0073aa;
+    color: #ffffff;
+    text-decoration: none;
+    text-shadow: none;
+}
+
+.wrap .button-primary:hover {
+    background-color: #005177;
+}
+
+/* Tabella partite in sospeso */
+.wp-list-table.widefat.fixed.striped th {
+    background-color: #f1f1f1;
+    font-weight: bold;
+}
+
+.wp-list-table.widefat.fixed.striped td {
+    vertical-align: middle;
+}
+
+.wp-list-table.widefat.fixed.striped a {
+    color: #0073aa;
+}
+
+.wp-list-table.widefat.fixed.striped a:hover {
+    color: #005177;
+}
+
+/* Notifiche */
+.notice.notice-success {
+    background-color: #dff0d8;
+    border-left-color: #3c763d;
+}
+
+.notice.notice-error {
+    background-color: #f2dede;
+    border-left-color: #a94442;
+}
+
+/* Azioni dinamiche */
+.eto-confirm-match {
+    background-color: #46b450;
+    color: white;
+    border-radius: 4px;
+    padding: 5px 10px;
+}
+
+.eto-confirm-match:hover {
+    background-color: #398a3d;
+}
