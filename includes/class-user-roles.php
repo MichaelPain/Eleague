@@ -1,44 +1,70 @@
 <?php
 class ETO_User_Roles {
-    // Aggiungi ruoli e capacità all'attivazione
+    // Aggiunta costante per le capability
+    const ADMIN_CAPS = [
+        'manage_tournaments',
+        'edit_tournaments', 
+        'delete_teams',
+        'confirm_results',
+        'manage_eto_settings'
+    ];
+
+    public static function setup_roles() {
+        self::add_roles();
+        self::add_admin_capabilities(); // Metodo modificato
+    }
+
     public static function init() {
-        add_action('init', [self::class, 'add_roles']);
-        add_action('admin_init', [self::class, 'add_capabilities']);
+        add_action('init', [__CLASS__, 'add_roles']);
+        add_action('admin_init', [__CLASS__, 'add_admin_capabilities']); // Modificato
     }
 
-    // Crea ruolo 'tournament_organizer'
-    public static function add_roles() {
-        add_role(
-            'tournament_organizer',
-            'Organizzatore Tornei',
-            [
-                'read' => true,
-                'edit_posts' => true,
-                'delete_posts' => false,
-                'upload_files' => true
-            ]
-        );
+    private static function add_roles() {
+        if (!get_role('tournament_organizer')) {
+            add_role(
+                'tournament_organizer',
+                __('Organizzatore Tornei', 'eto'),
+                [
+                    'read' => true,
+                    'edit_posts' => true,
+                    'delete_posts' => false,
+                    'upload_files' => true,
+                    'manage_tournaments' => true,
+                    'edit_tournaments' => true
+                ]
+            );
+        }
     }
 
-    // Assegna capacità agli amministratori e organizzatori
-    public static function add_capabilities() {
-        $roles = ['administrator', 'tournament_organizer'];
+    // Nuovo metodo dedicato per admin
+    private static function add_admin_capabilities() {
+        $admin_role = get_role('administrator');
         
-        foreach ($roles as $role_name) {
-            $role = get_role($role_name);
-            if ($role) {
-                $role->add_cap('manage_tournaments');
-                $role->add_cap('edit_tournaments');
-                $role->add_cap('delete_teams');
-                $role->add_cap('confirm_results');
+        if ($admin_role) {
+            foreach (self::ADMIN_CAPS as $cap) {
+                if (!$admin_role->has_cap($cap)) {
+                    $admin_role->add_cap($cap);
+                }
             }
         }
+    }
 
-        // Capacità aggiuntive solo per admin
+    // Metodo di rimozione aggiornato
+    public static function remove_roles() {
+        if (get_role('tournament_organizer')) {
+            remove_role('tournament_organizer');
+        }
+
         $admin_role = get_role('administrator');
-        $admin_role->add_cap('manage_eto_settings');
+        if ($admin_role) {
+            foreach (self::ADMIN_CAPS as $cap) {
+                $admin_role->remove_cap($cap);
+            }
+        }
     }
 }
 
-// Avvia la configurazione dei ruoli
-ETO_User_Roles::init();
+// Avvio condizionale per evitare conflitti
+if (!defined('WP_UNINSTALL_PLUGIN')) {
+    ETO_User_Roles::init();
+}

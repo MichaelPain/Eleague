@@ -28,7 +28,10 @@ define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log');
 // ==================================================
 $core_files = [
     // Database e migrazioni
+    'includes/class-user-roles.php',
     'includes/class-database.php',
+    'includes/class-cron.php',
+    'includes/class-activator.php',
     
     // Logica core
     'includes/class-tournament.php',
@@ -39,14 +42,11 @@ $core_files = [
     'includes/class-multisite.php',
     'includes/class-riot-api.php',
     'includes/class-uploads.php',
-    'includes/class-unistaller.php',
-    'includes/class-activator.php',
+    'includes/class-uninstaller.php',
     'includes/class-deactivator.php',
     'includes/utilities.php',
     
     // Sistema
-    'includes/class-user-roles.php',
-    'includes/class-cron.php',
     'includes/class-audit-log.php',
     'includes/class-ajax-handler.php',
     'includes/class-widget-leaderboard.php',
