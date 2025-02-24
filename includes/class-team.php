@@ -7,7 +7,7 @@
 
 class ETO_Team {
     const MAX_MEMBERS = 6;
-    const MIN_MEMBERS = 2;
+    const MIN_MEMBERS = 3;
     const STATUS_PENDING = 'pending';
     const STATUS_CHECKED_IN = 'checked_in';
     const ROLE_CAPTAIN = 'captain';
@@ -21,7 +21,7 @@ class ETO_Team {
 
         try {
             // Verifica permessi utente
-            if (!current_user_can('eto_create_team')) {
+            if (!current_user_can('manage_eto_teams')) {
                 throw new Exception(__('Permessi insufficienti per creare team', 'eto'));
             }
 
@@ -267,6 +267,8 @@ class ETO_Team {
      * Validazione dati team
      */
     private static function validate_team_data($data) {
+        global $wpdb;
+
         // Campi obbligatori
         $required_fields = ['tournament_id', 'name', 'members'];
         foreach ($required_fields as $field) {
