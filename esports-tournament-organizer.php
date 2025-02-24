@@ -1,8 +1,13 @@
 <?php
 /**
- * Gestione del database del plugin
- * @package eSports Tournament Organizer
- * @since 2.0.0
+ * Plugin Name: eSports Tournament Organizer
+ * Plugin URI: https://github.com/MichaelPain/Eleague
+ * Description: Plugin completo per organizzare tornei eSports.
+ * Version: 2.1.0
+ * Author: Il Tuo Nome
+ * License: GPLv3
+ * Text Domain: eto
+ * Domain Path: /languages
  */
 
 class ETO_Database {
