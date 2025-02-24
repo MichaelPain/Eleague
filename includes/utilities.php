@@ -1,75 +1,77 @@
 <?php
-// Funzioni di utilità globali per il plugin
+/**
+ * Funzioni di utilità globali
+ * @package eSports Tournament Organizer
+ * @since 2.1.0
+ */
 
-// Verifica se un team è bloccato (in un torneo attivo)
-function eto_team_locked($team_id) {
-    global $wpdb;
-    return $wpdb->get_var(
-        $wpdb->prepare(
-            "SELECT status FROM {$wpdb->prefix}eto_tournaments 
-            WHERE id = (SELECT tournament_id FROM {$wpdb->prefix}eto_teams WHERE id = %d)",
-            $team_id
-        )
-    ) === 'active';
-}
+if (!function_exists('eto_generate_bracket_html')) {
+    /**
+     * Genera HTML strutturato per i bracket
+     */
+    function eto_generate_bracket_html($matches) {
+        $html = '<div class="eto-bracket-container">';
+        
+        foreach ($matches as $match) {
+            $team1_name = esc_html($match->team1->name ?? __('Team 1', 'eto'));
+            $team2_name = esc_html($match->team2->name ?? __('Team 2', 'eto'));
+            $status_class = sanitize_html_class($match->status);
 
-// Verifica validità Riot#ID
-function eto_validate_riot_id($riot_id) {
-    return preg_match('/^[a-zA-Z0-9]+#[a-zA-Z0-9]+$/', $riot_id);
-}
+            $html .= sprintf(
+                '<div class="match %s" data-match-id="%d">
+                    <div class="team">%s</div>
+                    <div class="vs">vs</div>
+                    <div class="team">%s</div>
+                </div>',
+                $status_class,
+                absint($match->id),
+                $team1_name,
+                $team2_name
+            );
+        }
 
-// Ottieni i tornei di un utente
-function eto_get_user_tournaments($user_id) {
-    global $wpdb;
-    return $wpdb->get_results(
-        $wpdb->prepare(
-            "SELECT t.* FROM {$wpdb->prefix}eto_tournaments t
-            INNER JOIN {$wpdb->prefix}eto_teams tm ON t.id = tm.tournament_id
-            INNER JOIN {$wpdb->prefix}eto_team_members m ON tm.id = m.team_id
-            WHERE m.user_id = %d",
-            $user_id
-        )
-    );
-}
-
-// Formatta la data per il frontend
-function eto_format_date($date_string, $format = 'j F Y H:i') {
-    $timestamp = strtotime($date_string);
-    return date_i18n($format, $timestamp);
-}
-
-// Controlla se il check-in è aperto per un torneo
-function eto_checkin_open($tournament_id) {
-    $tournament = ETO_Tournament::get($tournament_id);
-    $start_time = strtotime($tournament->start_date);
-    return time() >= ($start_time - 3600) && time() <= $start_time;
-}
-
-// Genera un link sicuro per azioni (es. elimina team)
-function eto_generate_action_url($action, $params = []) {
-    $base_url = admin_url('admin-post.php');
-    $params = array_merge(
-        ['action' => $action, 'nonce' => wp_create_nonce($action)],
-        $params
-    );
-    return add_query_arg($params, $base_url);
-}
-
-// Redirect dopo azione con messaggio
-function eto_redirect_with_message($url, $message, $type = 'success') {
-    set_transient('eto_action_message', [
-        'message' => $message,
-        'type' => $type
-    ], 30);
-    wp_redirect($url);
-    exit;
-}
-
-// Mostra messaggi dopo redirect
-function eto_display_action_messages() {
-    if ($message = get_transient('eto_action_message')) {
-        echo '<div class="notice notice-' . esc_attr($message['type']) . '"><p>' . esc_html($message['message']) . '</p></div>';
-        delete_transient('eto_action_message');
+        $html .= '</div>';
+        return $html;
     }
 }
-add_action('admin_notices', 'eto_display_action_messages');
+
+if (!function_exists('eto_send_json_response')) {
+    /**
+     * Invia una risposta JSON standardizzata
+     */
+    function eto_send_json_response($data, $status = 200) {
+        status_header($status);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => $status < 400,
+            'data' => $data,
+            'nonce' => wp_create_nonce('eto_ajax_nonce')
+        ]);
+        exit;
+    }
+}
+
+if (!function_exists('eto_redirect')) {
+    /**
+     * Redirect sicuro con controllo permessi
+     */
+    function eto_redirect($url, $capability = 'manage_options') {
+        if (current_user_can($capability)) {
+            wp_safe_redirect(esc_url_raw($url));
+            exit;
+        }
+        wp_die(__('Permessi insufficienti', 'eto'));
+    }
+}
+
+if (!function_exists('eto_clean_array')) {
+    /**
+     * Sanitizza array multidimensionale
+     */
+    function eto_clean_array($data) {
+        if (is_array($data)) {
+            return array_map('eto_clean_array', $data);
+        }
+        return is_scalar($data) ? sanitize_text_field($data) : null;
+    }
+}
