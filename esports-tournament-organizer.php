@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/MichaelPain/Eleague
  * Description: Gestione avanzata tornei eSports con bracket, team e integrazioni.
  * Version: 3.1.0
- * Author: Il Tuo Nome
+ * Author: MichaelPain
  * License: GPLv3
  * Text Domain: eto
  * Domain Path: /languages

@@ -3,7 +3,7 @@ Contributors: Il Tuo Nome
 Tags: esports, tournament, league of legends, team, bracket, swiss
 Requires at least: 5.0
 Tested up to: 6.2
-Stable tag: 3.1.0
+Stable tag: 1.1.0
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 

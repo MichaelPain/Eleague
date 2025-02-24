@@ -317,3 +317,12 @@ class ETO_Tournament {
         return $result !== false;
     }
 }
+
+public static function get_all() {
+    global $wpdb;
+    
+    return $wpdb->get_results(
+        "SELECT * FROM {$wpdb->prefix}eto_tournaments 
+        ORDER BY start_date DESC"
+    );
+}
