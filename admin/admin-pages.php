@@ -1,5 +1,39 @@
 <?php
-// Pagina principale di amministrazione
+/**
+ * Pagine di Amministrazione
+ */
+
+function eto_admin_menu() {
+    add_menu_page(
+        'Gestione Tornei eSports', 
+        'Tornei eSports', 
+        'manage_options', 
+        'eto-tournaments', 
+        'eto_main_admin_page', 
+        'dashicons-games', 
+        6
+    );
+
+    add_submenu_page(
+        'eto-tournaments',
+        'Crea Nuovo Torneo',
+        'Crea Torneo',
+        'manage_options',
+        'eto-create-tournament',
+        'eto_create_tournament_page'
+    );
+
+    add_submenu_page(
+        'eto-tournaments',
+        'Partite in Sospeso',
+        'Partite in Sospeso',
+        'manage_options',
+        'eto-pending-matches',
+        'eto_pending_matches_page'
+    );
+}
+add_action('admin_menu', 'eto_admin_menu');
+
 function eto_main_admin_page() {
     ?>
     <div class="wrap">
@@ -28,7 +62,6 @@ function eto_main_admin_page() {
     <?php
 }
 
-// Pagina creazione torneo
 function eto_create_tournament_page() {
     ?>
     <div class="wrap">
@@ -79,7 +112,6 @@ function eto_create_tournament_page() {
     <?php
 }
 
-// Pagina partite in sospeso
 function eto_pending_matches_page() {
     $matches = ETO_Match::get_pending();
     ?>
