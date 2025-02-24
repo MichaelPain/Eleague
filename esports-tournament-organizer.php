@@ -40,6 +40,8 @@ $core_files = [
     'includes/class-riot-api.php',
     'includes/class-uploads.php',
     'includes/class-unistaller.php',
+    'includes/class-activator.php',
+    'includes/class-deactivator.php',
     'includes/utilities.php',
     
     // Sistema
