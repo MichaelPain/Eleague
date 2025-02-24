@@ -1,127 +1,110 @@
 <?php
 /**
  * Plugin Name: eSports Tournament Organizer
- * Plugin URI: https://github.com/TuoUtente/esports-tournament-organizer
- * Description: Plugin completo per organizzare tornei eSports.
+ * Plugin URI: https://github.com/MichaelPain/Eleague
+ * Description: Plugin completo per organizzare tornei eSports con gestione team, bracket, check-in e integrazione Riot Games API.
  * Version: 1.1.0
  * Author: Il Tuo Nome
- * License: GPLv3
+ * Author URI: https://iltuositoweb.com
+ * License: GNU General Public License v3.0
+ * License URI: http://www.gnu.org/licenses/gpl-3.0.html
  * Text Domain: eto
  * Domain Path: /languages
+ * Requires at least: 6.4
+ * Requires PHP: 7.4
+ * Network: true
  */
 
-defined('ABSPATH') || exit;
-
-// =============================================
-// FUNZIONE DI DEBUGGING
-// =============================================
-function eto_debug_log($message) {
-    $log_file = WP_CONTENT_DIR . '/debug-eto.txt';
-    file_put_contents($log_file, '['.date('Y-m-d H:i:s').'] '.$message.PHP_EOL, FILE_APPEND);
+// Blocca l'accesso diretto
+if (!defined('ABSPATH')) {
+    exit;
 }
 
-// =============================================
-// COSTANTI E INCLUSIONI
-// =============================================
-try {
-    eto_debug_log('=== INIZIO ATTIVAZIONE PLUGIN ===');
+// =====================================================================
+// SEZIONE 1: DEFINIZIONE COSTANTI E CONFIGURAZIONI GLOBALI
+// =====================================================================
+define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('ETO_DB_VERSION', '1.1.0');
+define('ETO_RIOT_API_ENDPOINT', 'https://euw1.api.riotgames.com');
+define('ETO_DEBUG', true);
+define('ETO_LOG_PATH', WP_CONTENT_DIR . '/eto-debug.log');
+define('ETO_MAX_TEAM_MEMBERS', 6);
+define('ETO_TOURNAMENT_STATUSES', ['pending', 'active', 'completed', 'cancelled']);
 
-    // 1. Definizione costanti
-    define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
-    define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
-    define('ETO_DB_VERSION', '1.1.0');
-    eto_debug_log('Costanti definite');
+// =====================================================================
+// SEZIONE 2: CARICAMENTO CLASSI CORE
+// =====================================================================
+$required_core_files = [
+    // Database e struttura dati
+    'includes/class-database.php',
+    'includes/class-tournament.php',
+    'includes/class-team.php',
+    'includes/class-match.php',
+    
+    // Utilità e logica di gioco
+    'includes/class-swiss.php',
+    'includes/class-elimination.php',
+    
+    // Integrazioni esterne
+    'includes/class-riot-api.php',
+    'includes/class-discord-integration.php',
+    
+    // Sistema e amministrazione
+    'includes/class-user-roles.php',
+    'includes/class-cron.php',
+    'includes/class-emails.php',
+    'includes/class-audit-log.php',
+    'includes/class-multisite.php',
+    
+    // Frontend e UI
+    'includes/class-widget-leaderboard.php',
+    'includes/class-shortcodes.php'
+];
 
-    // 2. Caricamento classi core
-    $core_files = [
-        'includes/class-database.php',
-        'includes/class-tournament.php', 
-        'includes/class-team.php',
-        'includes/class-match.php',
-        'includes/class-user-roles.php',
-        'includes/utilities.php',
-        'includes/class-swiss.php',
-        'includes/class-uploads.php',
-        'includes/class-riot-api.php',
-        'includes/class-cron.php',
-        'includes/class-emails.php',
-        'includes/class-audit-log.php',
-        'includes/class-multisite.php',
-        'includes/class-widget-leaderboard.php'
-    ];
-
-    foreach ($core_files as $file) {
-        $path = ETO_PLUGIN_DIR . $file;
-        if (!file_exists($path)) {
-            throw new Exception("File mancante: $file");
-        }
-        require_once $path;
-        eto_debug_log("Incluso: $file");
+foreach ($required_core_files as $file) {
+    $path = ETO_PLUGIN_DIR . $file;
+    if (!file_exists($path)) {
+        error_log("ETO Error: Missing core file - $path");
+        wp_die(sprintf(__('File core mancante: %s. Contatta l\'amministratore.', 'eto'), $file));
     }
+    require_once $path;
+}
 
-    // 3. Verifica classi essenziali
-    if (!class_exists('ETO_Database') || 
-        !class_exists('ETO_Tournament') || 
-        !class_exists('ETO_Team')) {
-        throw new Exception('Classi core mancanti');
-    }
-    eto_debug_log('Verifica classi superata');
+// =====================================================================
+// SEZIONE 3: REGISTRAZIONE HOOK PRINCIPALI
+// =====================================================================
+register_activation_hook(__FILE__, ['ETO_Database', 'install']);
+register_deactivation_hook(__FILE__, ['ETO_Cron', 'clear_scheduled_events']);
+register_uninstall_hook(__FILE__, ['ETO_Database', 'uninstall']);
 
-    // =============================================
-    // REGISTRAZIONE HOOK
-    // =============================================
-    eto_debug_log('Registrazione hook...');
-    
-    // Hook di attivazione/deattivazione
-    register_activation_hook(__FILE__, function() {
-        eto_debug_log('Esecuzione hook di attivazione');
-        ETO_Database::install();
-    });
-    
-    register_deactivation_hook(__FILE__, function() {
-        eto_debug_log('Esecuzione hook di disattivazione');
-        ETO_Cron::deactivate();
-    });
-    
-    register_uninstall_hook(__FILE__, function() {
-        eto_debug_log('Esecuzione hook di disinstallazione');
-        ETO_Database::uninstall();
-    });
+// =====================================================================
+// SEZIONE 4: INIZIALIZZAZIONE COMPONENTI
+// =====================================================================
+add_action('plugins_loaded', function() {
+    // Internazionalizzazione
+    load_plugin_textdomain(
+        'eto', 
+        false, 
+        dirname(plugin_basename(__FILE__)) . '/languages/'
+    );
 
-    // 4. Caricamento moduli aggiuntivi
-    eto_debug_log('Caricamento moduli admin...');
-    require_once ETO_PLUGIN_DIR . 'admin/admin-pages.php';
-    require_once ETO_PLUGIN_DIR . 'admin/admin-ajax.php';
-    require_once ETO_PLUGIN_DIR . 'admin/class-settings-register.php';
+    // Sistema di ruoli
+    ETO_User_Roles::setup_roles();
+    ETO_User_Roles::setup_capabilities();
 
-    eto_debug_log('Caricamento moduli frontend...');
-    require_once ETO_PLUGIN_DIR . 'public/shortcodes.php';
-    require_once ETO_PLUGIN_DIR . 'public/enqueue-scripts.php';
-    require_once ETO_PLUGIN_DIR . 'public/class-checkin.php';
+    // Sistema di cron
+    ETO_Cron::init_scheduled_events();
 
-    // 5. Inizializzazione componenti
-    eto_debug_log('Inizializzazione widget...');
-    add_action('widgets_init', function() {
-        if (!class_exists('ETO_Leaderboard_Widget')) {
-            throw new Exception('Classe widget non trovata');
-        }
-        register_widget('ETO_Leaderboard_Widget');
-    });
-
-    eto_debug_log('Inizializzazione multisito...');
+    // Integrazione multisito
     if (is_multisite()) {
-        ETO_Multisite::init();
+        ETO_Multisite::register_network_hooks();
     }
 
-    eto_debug_log('Avvio cron jobs...');
-    ETO_Cron::init();
+    // Verifica conflitti
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        ETO_Compatibility::check_third_party_plugins();
+    }
+});
 
-    eto_debug_log('Inizializzazione ruoli...');
-    ETO_User_Roles::init();
-
-    eto_debug_log('=== ATTIVAZIONE COMPLETATA CON SUCCESSO ===');
-
-} catch (Exception $e) {
-    eto_debug_log('ERRORE FATALE: ' . $e->getMessage());
-    wp_die('Errore attivazione plugin: ' . $e->getMessage());
-}
+// =================================================
