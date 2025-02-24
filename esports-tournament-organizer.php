@@ -15,6 +15,14 @@
 
 defined('ABSPATH') || exit;
 
+define('ETO_DEBUG', true);
+define('ETO_LOG_PATH', WP_CONTENT_DIR . '/debug-eto.log');
+
+if (ETO_DEBUG) {
+    ini_set('log_errors', 1);
+    ini_set('error_log', ETO_LOG_PATH);
+}
+
 // ==================================================
 // 1. COSTANTI GLOBALI E CONFIGURAZIONI
 // ==================================================
