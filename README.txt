@@ -1,5 +1,5 @@
 === eSports Tournament Organizer ===
-Contributors: MichaelPain
+Contributors: Il Tuo Nome
 Tags: esports, tournament, league of legends, team, bracket, swiss
 Requires at least: 5.0
 Tested up to: 6.2
