@@ -74,10 +74,11 @@ foreach ($core_files as $file) {
 // 3. REGISTRAZIONE HOOK PRINCIPALI (REVISIONATI)
 // ==================================================
 register_activation_hook(__FILE__, function() {
+    require_once ETO_PLUGIN_DIR . 'includes/class-user-roles.php';
+    ETO_User_Roles::setup_roles(); // Deve essere PRIMA dell'attivazione
+    require_once ETO_PLUGIN_DIR . 'includes/class-activator.php';
     ETO_Activator::handle_activation();
-    ETO_User_Roles::setup_roles();
 });
-
 register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
 
 register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);

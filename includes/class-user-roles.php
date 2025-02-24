@@ -65,6 +65,6 @@ class ETO_User_Roles {
 }
 
 // Avvio condizionale per evitare conflitti
-if (!defined('WP_UNINSTALL_PLUGIN')) {
+add_action('plugins_loaded', function() {
     ETO_User_Roles::init();
-}
+}, 9999); // Priorità altissima
