@@ -1,46 +1,32 @@
 <?php
-/**
- * Classe per la gestione avanzata delle partite
- * @package eSports Tournament Organizer
- * @since 1.0.0
- */
-
 class ETO_Match {
     const STATUS_PENDING = 'pending';
     const STATUS_COMPLETED = 'completed';
     const STATUS_DISPUTED = 'disputed';
     const MAX_SCREENSHOT_SIZE = 5242880; // 5MB
+    const NONCE_ACTION = 'eto_match_action';
 
-    /**
-     * Registra una nuova partita con controlli completi
-     */
-    public static function create($match_data) {
+    public static function create($data) {
         global $wpdb;
 
         try {
             // Verifica permessi
             if (!current_user_can('manage_eto_matches')) {
-                throw new Exception(__('Permessi insufficienti', 'eto'));
+                throw new Exception(__('Permessi insufficienti per creare partite', 'eto'));
             }
 
-            // Validazione campi obbligatori
-            $required_fields = ['tournament_id', 'round', 'team1_id'];
-            foreach ($required_fields as $field) {
-                if (empty($match_data[$field])) {
-                    throw new Exception(
-                        sprintf(__('Campo obbligatorio mancante: %s', 'eto'), $field)
-                    );
-                }
+            // Verifica nonce per azioni admin
+            if (!isset($data['_wpnonce']) || !wp_verify_nonce($data['_wpnonce'], self::NONCE_ACTION)) {
+                throw new Exception(__('Verifica di sicurezza fallita', 'eto'));
             }
 
-            // Sanitizzazione dati
-            $data = [
-                'tournament_id' => absint($match_data['tournament_id']),
-                'round' => sanitize_text_field($match_data['round']),
-                'team1_id' => absint($match_data['team1_id']),
-                'team2_id' => isset($match_data['team2_id']) ? absint($match_data['team2_id']) : null,
-                'winner_id' => isset($match_data['winner_id']) ? absint($match_data['winner_id']) : null,
-                'screenshot_url' => esc_url_raw($match_data['screenshot_url'] ?? ''),
+            $validated = [
+                'tournament_id' => absint($data['tournament_id']),
+                'round' => sanitize_text_field($data['round']),
+                'team1_id' => absint($data['team1_id']),
+                'team2_id' => isset($data['team2_id']) ? absint($data['team2_id']) : null,
+                'winner_id' => isset($data['winner_id']) ? absint($data['winner_id']) : null,
+                'screenshot_url' => esc_url_raw($data['screenshot_url'] ?? ''),
                 'reported_by' => get_current_user_id(),
                 'status' => self::STATUS_PENDING,
                 'created_at' => current_time('mysql'),
@@ -48,31 +34,23 @@ class ETO_Match {
             ];
 
             // Validazioni avanzate
-            if ($data['team1_id'] === $data['team2_id']) {
+            if ($validated['team1_id'] === $validated['team2_id']) {
                 throw new Exception(__('Una partita non può avere lo stesso team su entrambi i lati', 'eto'));
             }
 
-            if (!self::valid_teams($data['team1_id'], $data['team2_id'], $data['tournament_id'])) {
+            if (!self::valid_teams($validated['team1_id'], $validated['team2_id'], $validated['tournament_id'])) {
                 throw new Exception(__('Uno o più team non appartengono a questo torneo', 'eto'));
             }
 
-            // Transazione database
             $wpdb->query('START TRANSACTION');
 
             $result = $wpdb->insert(
                 "{$wpdb->prefix}eto_matches",
-                $data,
+                $validated,
                 [
-                    '%d', // tournament_id
-                    '%s', // round
-                    '%d', // team1_id
-                    '%d', // team2_id
-                    '%d', // winner_id
-                    '%s', // screenshot_url
-                    '%d', // reported_by
-                    '%s', // status
-                    '%s', // created_at
-                    '%s'  // updated_at
+                    '%d', '%s', '%d', '%d',
+                    '%d', '%s', '%d', '%s',
+                    '%s', '%s'
                 ]
             );
 
@@ -83,11 +61,10 @@ class ETO_Match {
 
             $match_id = $wpdb->insert_id;
 
-            // Aggiorna statistiche se c'è un vincitore
-            if ($data['winner_id']) {
+            if ($validated['winner_id']) {
                 $update_result = self::update_team_stats(
-                    $data['winner_id'], 
-                    $data['tournament_id'], 
+                    $validated['winner_id'],
+                    $validated['tournament_id'],
                     'win'
                 );
                 
@@ -96,11 +73,10 @@ class ETO_Match {
                 }
             }
 
-            // Registra audit log
             ETO_Audit_Log::add([
                 'action_type' => 'match_created',
                 'object_id' => $match_id,
-                'details' => json_encode($data)
+                'details' => json_encode($validated)
             ]);
 
             $wpdb->query('COMMIT');
@@ -114,13 +90,15 @@ class ETO_Match {
         }
     }
 
-    /**
-     * Conferma una partita con controlli completi
-     */
-    public static function confirm($match_id, $winner_id) {
+    public static function confirm($match_id, $winner_id, $nonce) {
         global $wpdb;
 
         try {
+            // Verifica nonce
+            if (!wp_verify_nonce($nonce, self::NONCE_ACTION)) {
+                throw new Exception(__('Verifica di sicurezza fallita', 'eto'));
+            }
+
             error_log("[ETO] Tentativo conferma partita #$match_id");
 
             $match = self::get($match_id);
@@ -158,7 +136,7 @@ class ETO_Match {
             
             self::update_team_stats($winner_id, $match->tournament_id, 'win');
             
-            if ($loser_id !== 0) { // 0 = BYE
+            if ($loser_id !== 0) {
                 self::update_team_stats($loser_id, $match->tournament_id, 'loss');
             }
 
@@ -179,9 +157,6 @@ class ETO_Match {
         }
     }
 
-    /**
-     * Ottieni dettagli completi della partita
-     */
     public static function get($match_id) {
         global $wpdb;
 
@@ -202,9 +177,6 @@ class ETO_Match {
         return $match;
     }
 
-    /**
-     * Ottieni tutte le partite di un torneo
-     */
     public static function get_by_tournament($tournament_id, $status = null) {
         global $wpdb;
 
@@ -228,9 +200,6 @@ class ETO_Match {
         return $matches;
     }
 
-    /**
-     * Aggiorna le statistiche dei team
-     */
     private static function update_team_stats($team_id, $tournament_id, $outcome = 'win') {
         global $wpdb;
 
@@ -257,33 +226,32 @@ class ETO_Match {
         return true;
     }
 
-    /**
-     * Verifica validità team per il torneo
-     */
     private static function valid_teams($team1_id, $team2_id, $tournament_id) {
         global $wpdb;
 
         if ($team2_id === 0 || $team2_id === null) return true;
 
-        $query = $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams 
-            WHERE tournament_id = %d 
-            AND id IN (%d, %d)",
-            $tournament_id,
-            $team1_id,
-            $team2_id
-        );
-
-        return $wpdb->get_var($query) === 2;
+        return $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams 
+                WHERE tournament_id = %d 
+                AND id IN (%d, %d)",
+                $tournament_id,
+                $team1_id,
+                $team2_id
+            )
+        ) === 2;
     }
 
-    /**
-     * Segnala una disputa per la partita
-     */
-    public static function dispute($match_id, $reason) {
+    public static function dispute($match_id, $reason, $nonce) {
         global $wpdb;
 
         try {
+            // Verifica nonce
+            if (!wp_verify_nonce($nonce, self::NONCE_ACTION)) {
+                throw new Exception(__('Verifica di sicurezza fallita', 'eto'));
+            }
+
             if (empty(trim($reason))) {
                 throw new Exception(__('Specificare un motivo per la disputa', 'eto'));
             }
@@ -320,9 +288,6 @@ class ETO_Match {
         }
     }
 
-    /**
-     * Processa screenshot con controlli completi
-     */
     public static function process_screenshot($file) {
         try {
             if ($file['error'] !== UPLOAD_ERR_OK) {
@@ -333,7 +298,7 @@ class ETO_Match {
                 throw new Exception(__('Dimensione massima consentita: 5MB', 'eto'));
             }
 
-            $file_info = wp_check_filetype($file['name']);
+            $file_info = wp_check_filetype_and_ext($file['tmp_name'], $file['name']);
             if (!in_array($file_info['type'], ['image/jpeg', 'image/png', 'image/gif'])) {
                 throw new Exception(__('Formato file non supportato', 'eto'));
             }

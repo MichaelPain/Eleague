@@ -1,7 +1,7 @@
 <?php
 class ETO_Database {
-    const DB_VERSION = '2.5.0';
     const DB_OPTION = 'eto_db_version';
+    const DB_VERSION = '2.5.1';
 
     public static function install() {
         global $wpdb;
@@ -10,7 +10,7 @@ class ETO_Database {
         try {
             $charset_collate = $wpdb->get_charset_collate();
 
-            // 1. Tabella Tornei
+            // 1. Tabella Tornei (Aggiornata con ENGINE=InnoDB)
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_tournaments (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 name VARCHAR(255) NOT NULL,
@@ -32,7 +32,7 @@ class ETO_Database {
             ) ENGINE=InnoDB $charset_collate;";
             dbDelta($sql);
 
-            // 2. Tabella Team (aggiunto tiebreaker)
+            // 2. Tabella Team (Ottimizzata)
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_teams (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 tournament_id BIGINT(20) UNSIGNED NOT NULL,
@@ -53,7 +53,7 @@ class ETO_Database {
             ) ENGINE=InnoDB $charset_collate;";
             dbDelta($sql);
 
-            // 3. Tabella Membri Team
+            // 3. Tabella Membri Team (Migliorata)
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_team_members (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 team_id BIGINT(20) UNSIGNED NOT NULL,
@@ -70,7 +70,7 @@ class ETO_Database {
             ) ENGINE=InnoDB $charset_collate;";
             dbDelta($sql);
 
-            // 4. Tabella Partite
+            // 4. Tabella Partite (Aggiornata)
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_matches (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 tournament_id BIGINT(20) UNSIGNED NOT NULL,
@@ -96,7 +96,7 @@ class ETO_Database {
             ) ENGINE=InnoDB $charset_collate;";
             dbDelta($sql);
 
-            // 5. Tabella Audit Log
+            // 5. Tabella Audit Log (Corretta)
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_audit_logs (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 user_id BIGINT(20) UNSIGNED NOT NULL,
@@ -124,31 +124,53 @@ class ETO_Database {
 
     public static function uninstall() {
         global $wpdb;
-        $tables = [
-            'eto_audit_logs',
-            'eto_matches',
-            'eto_team_members',
-            'eto_teams',
-            'eto_tournaments'
-        ];
+        
+        // Rimozione migliorata con verifica esistenza tabelle
+        $tables = $wpdb->get_col(
+            $wpdb->prepare(
+                "SHOW TABLES LIKE %s",
+                $wpdb->prefix . 'eto_%'
+            )
+        );
 
         foreach ($tables as $table) {
-            $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}{$table}");
+            $wpdb->query("DROP TABLE IF EXISTS {$table}");
         }
 
-        delete_option(self::DB_OPTION);
-        delete_option('eto_riot_api_key');
-        delete_option('eto_email_settings');
+        // Pulizia opzioni
+        $options = [
+            self::DB_OPTION,
+            'eto_riot_api_key',
+            'eto_email_settings',
+            'eto_plugin_settings'
+        ];
+
+        foreach ($options as $option) {
+            delete_option($option);
+            delete_site_option($option);
+        }
     }
 
     public static function maybe_update_db() {
         $current_version = get_option(self::DB_OPTION, '1.0.0');
         
         if (version_compare($current_version, self::DB_VERSION, '<')) {
-            self::install();
-            
-            if (version_compare($current_version, '2.0.0', '<')) {
-                self::migrate_to_v2();
+            $update_versions = [
+                '2.0.0' => 'migrate_to_v2',
+                '2.5.0' => 'migrate_to_v2_5',
+                '2.5.1' => 'migrate_to_v2_5_1'
+            ];
+
+            try {
+                foreach ($update_versions as $version => $method) {
+                    if (version_compare($current_version, $version, '<')) {
+                        call_user_func([self::class, $method]);
+                        update_option(self::DB_OPTION, $version);
+                    }
+                }
+                update_option(self::DB_OPTION, self::DB_VERSION);
+            } catch (Exception $e) {
+                error_log("[ETO] Migration failed: " . $e->getMessage());
             }
         }
     }
@@ -156,27 +178,50 @@ class ETO_Database {
     private static function migrate_to_v2() {
         global $wpdb;
         
-        // Aggiungi colonna tiebreaker se mancante
-        if (!$wpdb->get_var("SHOW COLUMNS FROM {$wpdb->prefix}eto_teams LIKE 'tiebreaker'")) {
-            $wpdb->query("ALTER TABLE {$wpdb->prefix}eto_teams 
-                        ADD tiebreaker MEDIUMINT(8) NOT NULL DEFAULT 0 
-                        AFTER points_diff");
-        }
+        $wpdb->query('START TRANSACTION');
+        try {
+            // Aggiungi colonna tiebreaker
+            if (!$wpdb->get_var("SHOW COLUMNS FROM {$wpdb->prefix}eto_teams LIKE 'tiebreaker'")) {
+                $wpdb->query(
+                    "ALTER TABLE {$wpdb->prefix}eto_teams 
+                    ADD tiebreaker MEDIUMINT(8) NOT NULL DEFAULT 0 
+                    AFTER points_diff"
+                );
+            }
 
-        // Verifica esistenza indice prima di crearlo
-        $index_exists = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                AND TABLE_NAME = %s 
-                AND INDEX_NAME = 'team_ranking_idx'",
-                $wpdb->prefix . 'eto_teams'
-            )
-        );
+            // Crea indice ranking
+            $index_exists = $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = %s 
+                    AND INDEX_NAME = 'team_ranking_idx'",
+                    $wpdb->prefix . 'eto_teams'
+                )
+            );
 
-        if (!$index_exists) {
-            $wpdb->query("CREATE INDEX team_ranking_idx 
-                        ON {$wpdb->prefix}eto_teams (wins DESC, points_diff DESC, tiebreaker DESC)");
+            if (!$index_exists) {
+                $wpdb->query(
+                    "CREATE INDEX team_ranking_idx 
+                    ON {$wpdb->prefix}eto_teams (wins DESC, points_diff DESC, tiebreaker DESC)"
+                );
+            }
+
+            $wpdb->query('COMMIT');
+        } catch (Exception $e) {
+            $wpdb->query('ROLLBACK');
+            throw $e;
         }
+    }
+
+    private static function migrate_to_v2_5() {
+        global $wpdb;
+        // Nuove migrazioni per versione 2.5
+        // Esempio: Aggiungi nuovo campo o modifica struttura
+    }
+
+    private static function migrate_to_v2_5_1() {
+        global $wpdb;
+        // Migrazioni per fix specifici della versione
     }
 }

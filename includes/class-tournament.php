@@ -1,14 +1,11 @@
 <?php
-/**
- * Gestione avanzata dei tornei
- */
-
 class ETO_Tournament {
     const FORMAT_SINGLE_ELIMINATION = 'single_elimination';
     const FORMAT_DOUBLE_ELIMINATION = 'double_elimination';
     const FORMAT_SWISS = 'swiss';
     const MIN_PLAYERS = 2;
     const MAX_PLAYERS = 20;
+    const ALLOWED_GAME_TYPES = ['lol', 'csgo', 'dota2', 'valorant', 'overwatch'];
 
     public static function create($data) {
         global $wpdb;
@@ -17,7 +14,8 @@ class ETO_Tournament {
             'name' => __('Nome torneo', 'eto'),
             'format' => __('Formato torneo', 'eto'),
             'start_date' => __('Data inizio', 'eto'),
-            'end_date' => __('Data fine', 'eto')
+            'end_date' => __('Data fine', 'eto'),
+            'game_type' => __('Tipo di gioco', 'eto')
         ];
 
         foreach ($required_fields as $field => $label) {
@@ -32,6 +30,7 @@ class ETO_Tournament {
         $format = self::sanitize_format($data['format']);
         $start_date = self::sanitize_date($data['start_date']);
         $end_date = self::sanitize_date($data['end_date']);
+        $game_type = self::sanitize_game_type($data['game_type']);
         $min_players = isset($data['min_players']) ? absint($data['min_players']) : self::MIN_PLAYERS;
         $max_players = isset($data['max_players']) ? absint($data['max_players']) : self::MAX_PLAYERS;
         $checkin_enabled = isset($data['checkin_enabled']) ? 1 : 0;
@@ -40,6 +39,7 @@ class ETO_Tournament {
         if ($format instanceof WP_Error) return $format;
         if ($start_date instanceof WP_Error) return $start_date;
         if ($end_date instanceof WP_Error) return $end_date;
+        if ($game_type instanceof WP_Error) return $game_type;
 
         if ($min_players < self::MIN_PLAYERS || $min_players > self::MAX_PLAYERS) {
             return new WP_Error('invalid_min_players',
@@ -67,6 +67,7 @@ class ETO_Tournament {
                 [
                     'name' => $name,
                     'format' => $format,
+                    'game_type' => $game_type,
                     'start_date' => $start_date->format('Y-m-d H:i:s'),
                     'end_date' => $end_date->format('Y-m-d H:i:s'),
                     'min_players' => $min_players,
@@ -77,8 +78,8 @@ class ETO_Tournament {
                     'created_at' => current_time('mysql')
                 ],
                 [
-                    '%s', '%s', '%s', '%s',
-                    '%d', '%d', '%d', '%d',
+                    '%s', '%s', '%s', '%s', '%s',
+                    '%d', '%d', '%d', '%d', 
                     '%s', '%s'
                 ]
             );
@@ -101,6 +102,48 @@ class ETO_Tournament {
             $wpdb->query('ROLLBACK');
             return new WP_Error('db_error', __('Errore durante la creazione del torneo: ', 'eto') . $e->getMessage());
         }
+    }
+
+    public static function update_status($tournament_id, $new_status) {
+        global $wpdb;
+
+        $exists = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}eto_tournaments 
+                WHERE id = %d",
+                $tournament_id
+            )
+        );
+
+        if (!$exists) {
+            return new WP_Error('invalid_tournament', __('Il torneo specificato non esiste', 'eto'));
+        }
+
+        $allowed_statuses = ['pending', 'active', 'completed', 'cancelled'];
+        if (!in_array($new_status, $allowed_statuses)) {
+            return new WP_Error('invalid_status', __('Stato del torneo non valido', 'eto'));
+        }
+
+        $result = $wpdb->update(
+            "{$wpdb->prefix}eto_tournaments",
+            ['status' => $new_status],
+            ['id' => $tournament_id],
+            ['%s'],
+            ['%d']
+        );
+
+        return $result !== false;
+    }
+
+    private static function sanitize_game_type($game_type) {
+        $clean_type = sanitize_key($game_type);
+        if (!in_array($clean_type, self::ALLOWED_GAME_TYPES)) {
+            return new WP_Error('invalid_game_type',
+                sprintf(__('Tipo di gioco non valido. Scegli tra: %s', 'eto'), 
+                implode(', ', self::ALLOWED_GAME_TYPES))
+            );
+        }
+        return $clean_type;
     }
 
     public static function generate_initial_bracket($tournament_id) {
@@ -168,7 +211,6 @@ class ETO_Tournament {
 
     public static function get($tournament_id) {
         global $wpdb;
-
         return $wpdb->get_row(
             $wpdb->prepare(
                 "SELECT * FROM {$wpdb->prefix}eto_tournaments 
@@ -257,30 +299,8 @@ class ETO_Tournament {
         return $wpdb->get_var($params ? $wpdb->prepare($query, $params) : $query);
     }
 
-    public static function update_status($tournament_id, $new_status) {
-        global $wpdb;
-
-        $allowed_statuses = ['pending', 'active', 'completed', 'cancelled'];
-        if (!in_array($new_status, $allowed_statuses)) {
-            return new WP_Error('invalid_status',
-                __('Stato del torneo non valido', 'eto')
-            );
-        }
-
-        $result = $wpdb->update(
-            "{$wpdb->prefix}eto_tournaments",
-            ['status' => $new_status],
-            ['id' => $tournament_id],
-            ['%s'],
-            ['%d']
-        );
-
-        return $result !== false;
-    }
-
     public static function get_all() {
         global $wpdb;
-
         return $wpdb->get_results(
             "SELECT * FROM {$wpdb->prefix}eto_tournaments 
             ORDER BY start_date DESC"

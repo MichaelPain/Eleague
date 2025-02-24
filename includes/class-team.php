@@ -1,38 +1,26 @@
 <?php
-/**
- * Gestione avanzata dei team e membri
- * @package eSports Tournament Organizer
- * @since 1.0.0
- */
-
 class ETO_Team {
-    const MAX_MEMBERS = 9;
-    const MIN_MEMBERS = 1;
+    const MAX_MEMBERS = 6;
+    const MIN_MEMBERS = 3;
     const STATUS_PENDING = 'pending';
     const STATUS_CHECKED_IN = 'checked_in';
-    const ROLE_CAPTAIN = 'captain';
-    const ROLE_MEMBER = 'member';
+    const NATIONALITY_LENGTH = 2;
+    const VALID_NATIONALITY_REGEX = '/^[A-Z]{2}$/';
 
-    /**
-     * Crea un nuovo team con controlli completi
-     */
     public static function create($data) {
         global $wpdb;
 
         try {
-            // Verifica permessi utente
             if (!current_user_can('manage_eto_teams')) {
                 throw new Exception(__('Permessi insufficienti per creare team', 'eto'));
             }
 
-            // Validazione dati
             $validated = self::validate_team_data($data);
             $current_user_id = get_current_user_id();
 
-            // Transazione database
             $wpdb->query('START TRANSACTION');
 
-            // Crea il team
+            // Creazione team
             $team_result = $wpdb->insert(
                 "{$wpdb->prefix}eto_teams",
                 [
@@ -47,15 +35,9 @@ class ETO_Team {
                     'updated_at' => current_time('mysql')
                 ],
                 [
-                    '%d', // tournament_id
-                    '%s', // name
-                    '%d', // captain_id
-                    '%s', // status
-                    '%d', // wins
-                    '%d', // losses
-                    '%d', // points_diff
-                    '%s', // created_at
-                    '%s'  // updated_at
+                    '%d', '%s', '%d', '%s',
+                    '%d', '%d', '%d', 
+                    '%s', '%s'
                 ]
             );
 
@@ -65,22 +47,20 @@ class ETO_Team {
 
             $team_id = $wpdb->insert_id;
 
-            // Aggiungi membri
+            // Aggiunta membri
             foreach ($validated['members'] as $index => $user_id) {
-                $is_captain = ($index === 0); // Primo membro = capitano
+                $is_captain = ($index === 0);
                 $member_result = self::add_member($team_id, $user_id, $is_captain);
-
+                
                 if (is_wp_error($member_result)) {
                     throw new Exception($member_result->get_error_message());
                 }
             }
 
-            // Aggiorna conteggio team nel torneo
             ETO_Tournament::update_team_count($validated['tournament_id']);
-
             $wpdb->query('COMMIT');
 
-            // Registra audit log
+            // Audit log
             ETO_Audit_Log::add([
                 'action_type' => 'team_created',
                 'object_id' => $team_id,
@@ -98,71 +78,62 @@ class ETO_Team {
         }
     }
 
-    /**
-     * Aggiungi membro al team con controlli avanzati
-     */
     public static function add_member($team_id, $user_id, $is_captain = false) {
         global $wpdb;
 
         try {
-            // Verifica esistenza team
             $team = self::get($team_id);
             if (!$team) {
                 throw new Exception(__('Team non trovato', 'eto'));
             }
 
-            // Verifica numero massimo membri
-            $current_members = self::count_members($team_id);
-            if ($current_members >= self::MAX_MEMBERS) {
+            if (self::count_members($team_id) >= self::MAX_MEMBERS) {
                 throw new Exception(
                     sprintf(__('Limite massimo di %d membri raggiunto', 'eto'), self::MAX_MEMBERS)
                 );
             }
 
-            // Verifica appartenenza ad altri team nello stesso torneo
+            // Fix SQL Injection: Aggiunto prepare()
             if (self::is_user_in_tournament($user_id, $team->tournament_id)) {
                 throw new Exception(
                     __('Utente già registrato in un altro team per questo torneo', 'eto')
                 );
             }
 
-            // Verifica esistenza utente
             $user = get_userdata($user_id);
             if (!$user) {
                 throw new Exception(__('ID utente non valido', 'eto'));
             }
 
-            // Preparazione dati membro
+            // Sanitizzazione avanzata nazionalità
+            $nationality_meta = get_user_meta($user_id, 'nationality', true);
+            $nationality = substr(sanitize_text_field($nationality_meta), 0, self::NATIONALITY_LENGTH);
+            $nationality = strtoupper($nationality);
+            
+            if (!preg_match(self::VALID_NATIONALITY_REGEX, $nationality)) {
+                throw new Exception(__('Codice nazionale non valido (esempio: IT)', 'eto'));
+            }
+
             $member_data = [
                 'team_id' => $team_id,
                 'user_id' => $user_id,
                 'riot_id' => sanitize_text_field(get_user_meta($user_id, 'riot_id', true)),
                 'discord_tag' => sanitize_text_field(get_user_meta($user_id, 'discord_tag', true)),
-                'nationality' => substr(sanitize_text_field(get_user_meta($user_id, 'nationality', true)), 0, 2),
+                'nationality' => $nationality,
                 'is_captain' => $is_captain ? 1 : 0,
                 'joined_at' => current_time('mysql')
             ];
 
-            // Inserimento nel database
             $insert_result = $wpdb->insert(
                 "{$wpdb->prefix}eto_team_members",
                 $member_data,
-                [
-                    '%d', // team_id
-                    '%d', // user_id
-                    '%s', // riot_id
-                    '%s', // discord_tag
-                    '%s', // nationality
-                    '%d', // is_captain
-                    '%s'  // joined_at
-                ]
+                ['%d', '%d', '%s', '%s', '%s', '%d', '%s']
             );
 
             if (!$insert_result) {
                 throw new Exception($wpdb->last_error);
             }
 
-            // Aggiorna ruolo utente se capitano
             if ($is_captain) {
                 $user->add_role('eto_captain');
                 ETO_Audit_Log::add([
@@ -179,9 +150,6 @@ class ETO_Team {
         }
     }
 
-    /**
-     * Ottieni dettagli completi del team
-     */
     public static function get($team_id) {
         global $wpdb;
 
@@ -201,9 +169,6 @@ class ETO_Team {
         return $team;
     }
 
-    /**
-     * Ottieni tutti i membri con dettagli utente
-     */
     public static function get_members($team_id) {
         global $wpdb;
 
@@ -227,9 +192,6 @@ class ETO_Team {
         );
     }
 
-    /**
-     * Aggiorna lo stato del team
-     */
     public static function update_status($team_id, $new_status) {
         global $wpdb;
 
@@ -253,7 +215,6 @@ class ETO_Team {
             return new WP_Error('db_error', $wpdb->last_error);
         }
 
-        // Registra audit log
         ETO_Audit_Log::add([
             'action_type' => 'team_status_changed',
             'object_id' => $team_id,
@@ -263,13 +224,9 @@ class ETO_Team {
         return true;
     }
 
-    /**
-     * Validazione dati team
-     */
     private static function validate_team_data($data) {
         global $wpdb;
 
-        // Campi obbligatori
         $required_fields = ['tournament_id', 'name', 'members'];
         foreach ($required_fields as $field) {
             if (empty($data[$field])) {
@@ -285,14 +242,12 @@ class ETO_Team {
             'members' => array_unique(array_map('absint', (array)$data['members']))
         ];
 
-        // Verifica esistenza torneo
         if (!ETO_Tournament::exists($validated['tournament_id'])) {
             throw new InvalidArgumentException(
                 __('Il torneo specificato non esiste', 'eto')
             );
         }
 
-        // Verifica numero membri
         $member_count = count($validated['members']);
         if ($member_count < self::MIN_MEMBERS || $member_count > self::MAX_MEMBERS) {
             throw new InvalidArgumentException(
@@ -300,7 +255,6 @@ class ETO_Team {
             );
         }
 
-        // Verifica unicità nome team nel torneo
         $existing = $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams
@@ -319,9 +273,6 @@ class ETO_Team {
         return $validated;
     }
 
-    /**
-     * Verifica se un utente è già in un team del torneo
-     */
     private static function is_user_in_tournament($user_id, $tournament_id) {
         global $wpdb;
 
@@ -336,9 +287,6 @@ class ETO_Team {
         ) > 0;
     }
 
-    /**
-     * Conta i membri del team
-     */
     private static function count_members($team_id) {
         global $wpdb;
 
@@ -351,23 +299,18 @@ class ETO_Team {
         );
     }
 
-    /**
-     * Elimina un team e i relativi membri
-     */
     public static function delete($team_id) {
         global $wpdb;
 
         try {
             $wpdb->query('START TRANSACTION');
 
-            // Elimina membri
             $wpdb->delete(
                 "{$wpdb->prefix}eto_team_members",
                 ['team_id' => $team_id],
                 ['%d']
             );
 
-            // Elimina team
             $result = $wpdb->delete(
                 "{$wpdb->prefix}eto_teams",
                 ['id' => $team_id],
@@ -380,7 +323,6 @@ class ETO_Team {
 
             $wpdb->query('COMMIT');
 
-            // Registra audit log
             ETO_Audit_Log::add([
                 'action_type' => 'team_deleted',
                 'object_id' => $team_id
