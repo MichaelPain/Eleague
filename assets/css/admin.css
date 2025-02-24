@@ -1,69 +1,176 @@
-/* Stili generali per l'area admin */
-.wrap h1 {
-    font-size: 24px;
-    margin-bottom: 20px;
+/* 
+ * eSports Tournament Organizer - Admin Styles
+ * Version: 2.1.0
+ */
+
+/* Struttura principale */
+.eto-admin-wrap {
+    padding: 2rem;
+    max-width: 1200px;
+    background: #f5f5f5;
+    border-radius: 8px;
+    margin-top: 1rem;
+}
+
+.eto-admin-wrap h1 {
+    font-size: 2rem;
     color: #23282d;
+    margin-bottom: 2rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #0073aa;
 }
 
-.wrap table.form-table th {
+/* Sezione dashboard */
+.eto-dashboard {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 2rem;
+    margin-top: 1.5rem;
+}
+
+.eto-stats-card {
+    background: #fff;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.eto-stats-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.eto-stats-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 1rem;
+    margin: 0 -1.5rem;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.eto-stats-list li:last-child {
+    border-bottom: none;
+}
+
+.stat-label {
+    color: #646970;
+    font-weight: 500;
+}
+
+.stat-value {
+    color: #0073aa;
+    font-weight: 700;
+}
+
+/* Form e tabelle */
+.eto-form-section {
+    margin-bottom: 1.5rem;
+    background: #fff;
+    padding: 1.5rem;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.eto-form-section label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #1d2327;
+}
+
+.eto-form-dates {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.eto-matches-table-wrapper {
+    overflow-x: auto;
+    margin-top: 1.5rem;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.eto-matches-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.eto-matches-table th {
+    background: #f8f9fa;
+    color: #2c3338;
+    font-weight: 600;
+    padding: 1rem;
     text-align: left;
-    font-weight: bold;
-    padding: 10px 15px;
+    border-bottom: 2px solid #dcdcde;
 }
 
-.wrap table.form-table td {
-    padding: 10px 15px;
-}
-
-.wrap .button-primary {
-    background-color: #0073aa;
-    border-color: #0073aa;
-    color: #ffffff;
-    text-decoration: none;
-    text-shadow: none;
-}
-
-.wrap .button-primary:hover {
-    background-color: #005177;
-}
-
-/* Tabella partite in sospeso */
-.wp-list-table.widefat.fixed.striped th {
-    background-color: #f1f1f1;
-    font-weight: bold;
-}
-
-.wp-list-table.widefat.fixed.striped td {
+.eto-matches-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #dcdcde;
     vertical-align: middle;
 }
 
-.wp-list-table.widefat.fixed.striped a {
-    color: #0073aa;
+/* Bottoni e interazioni */
+.eto-quick-actions {
+    display: grid;
+    gap: 1rem;
+    margin-top: 2rem;
 }
 
-.wp-list-table.widefat.fixed.striped a:hover {
-    color: #005177;
+.button.button-hero {
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    height: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
-/* Notifiche */
-.notice.notice-success {
-    background-color: #dff0d8;
-    border-left-color: #3c763d;
-}
-
-.notice.notice-error {
-    background-color: #f2dede;
-    border-left-color: #a94442;
-}
-
-/* Azioni dinamiche */
 .eto-confirm-match {
-    background-color: #46b450;
-    color: white;
-    border-radius: 4px;
-    padding: 5px 10px;
+    background: #00a32a;
+    border-color: #008a20;
+    transition: all 0.2s ease;
 }
 
 .eto-confirm-match:hover {
-    background-color: #398a3d;
+    background: #008a20;
+    transform: translateY(-1px);
+}
+
+.eto-screenshot-link {
+    display: inline-block;
+    padding: 0.5rem;
+    background: #f0f0f1;
+    border-radius: 4px;
+    line-height: 1;
+}
+
+/* Responsive Design */
+@media (max-width: 782px) {
+    .eto-dashboard {
+        grid-template-columns: 1fr;
+    }
+    
+    .eto-form-dates {
+        grid-template-columns: 1fr;
+    }
+    
+    .eto-matches-table th,
+    .eto-matches-table td {
+        white-space: nowrap;
+        min-width: 120px;
+    }
+}
+
+/* Animazioni */
+@keyframes eto-fade-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.eto-admin-wrap {
+    animation: eto-fade-in 0.3s ease-out;
 }
