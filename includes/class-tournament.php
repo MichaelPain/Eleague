@@ -52,17 +52,9 @@ class ETO_Tournament {
         $third_place_match = isset($data['third_place_match']) ? 1 : 0;
 
         // Validazioni avanzate
-        if ($format instanceof WP_Error) {
-            return $format;
-        }
-
-        if ($start_date instanceof WP_Error) {
-            return $start_date;
-        }
-
-        if ($end_date instanceof WP_Error) {
-            return $end_date;
-        }
+        if ($format instanceof WP_Error) return $format;
+        if ($start_date instanceof WP_Error) return $start_date;
+        if ($end_date instanceof WP_Error) return $end_date;
 
         if ($min_players < self::MIN_PLAYERS || $min_players > self::MAX_PLAYERS) {
             return new WP_Error('invalid_min_players',
@@ -254,7 +246,7 @@ class ETO_Tournament {
             }
 
             $matches["Round {$round}"] = $round_matches;
-            $team_ids = array_fill(0, $chunk_size, null); // Simula vincitori
+            $team_ids = array_fill(0, $chunk_size, null);
         }
 
         return $matches;
