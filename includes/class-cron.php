@@ -1,124 +1,139 @@
 <?php
-/**
- * Classe per la gestione delle operazioni pianificate
- * @package eSports Tournament Organizer
- * @since 1.1.0
- */
-
 class ETO_Cron {
-    const HOURLY_CHECK = 'eto_hourly_tournament_check';
-    const DAILY_CLEANUP = 'eto_daily_cleanup';
+    const CLEANUP_DAYS = 180; // 6 mesi
 
-    /**
-     * Inizializza i cron job
-     */
     public static function init() {
-        add_action(self::HOURLY_CHECK, [__CLASS__, 'check_tournament_statuses']);
-        add_action(self::DAILY_CLEANUP, [__CLASS__, 'cleanup_old_data']);
-        
-        self::schedule_events();
+        add_action('eto_hourly_check', [__CLASS__, 'hourly_tasks']);
+        add_action('eto_daily_cleanup', [__CLASS__, 'daily_cleanup']);
     }
 
-    /**
-     * Programma gli eventi ricorrenti
-     */
-    private static function schedule_events() {
-        if (!wp_next_scheduled(self::HOURLY_CHECK)) {
-            wp_schedule_event(time(), 'hourly', self::HOURLY_CHECK);
+    public static function schedule_events() {
+        if (!wp_next_scheduled('eto_hourly_check')) {
+            wp_schedule_event(
+                strtotime('+15 minutes'), 
+                'hourly', 
+                'eto_hourly_check'
+            );
         }
 
-        if (!wp_next_scheduled(self::DAILY_CLEANUP)) {
-            wp_schedule_event(time(), 'daily', self::DAILY_CLEANUP);
-        }
-    }
-
-    /**
-     * Disattiva i cron job alla disattivazione del plugin
-     */
-    public static function deactivate() {
-        wp_clear_scheduled_hook(self::HOURLY_CHECK);
-        wp_clear_scheduled_hook(self::DAILY_CLEANUP);
-    }
-
-    /**
-     * Controlla lo stato dei tornei
-     */
-    public static function check_tournament_statuses() {
-        global $wpdb;
-        
-        // Aggiorna tornei da "pending" a "active"
-        $wpdb->query(
-            $wpdb->prepare(
-                "UPDATE {$wpdb->prefix}eto_tournaments 
-                SET status = 'active' 
-                WHERE status = 'pending' 
-                AND start_date <= %s",
-                current_time('mysql')
-            )
-        );
-
-        // Aggiorna tornei da "active" a "completed"
-        $wpdb->query(
-            $wpdb->prepare(
-                "UPDATE {$wpdb->prefix}eto_tournaments 
-                SET status = 'completed' 
-                WHERE status = 'active' 
-                AND end_date <= %s",
-                current_time('mysql')
-            )
-        );
-
-        // Notifica per tornei in imminente inizio
-        $upcoming_tournaments = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}eto_tournaments 
-                WHERE status = 'pending' 
-                AND start_date BETWEEN %s AND %s",
-                current_time('mysql'),
-                date('Y-m-d H:i:s', strtotime('+1 hour'))
-            )
-        );
-
-        foreach ($upcoming_tournaments as $tournament) {
-            ETO_Emails::send_tournament_reminder($tournament->id);
+        if (!wp_next_scheduled('eto_daily_cleanup')) {
+            wp_schedule_event(
+                strtotime('tomorrow 3:00'), 
+                'daily', 
+                'eto_daily_cleanup'
+            );
         }
     }
 
-    /**
-     * Pulizia dati obsoleti
-     */
-    public static function cleanup_old_data() {
+    public static function clear_scheduled_events() {
+        wp_clear_scheduled_hook('eto_hourly_check');
+        wp_clear_scheduled_hook('eto_daily_cleanup');
+    }
+
+    public static function hourly_tasks() {
         global $wpdb;
 
-        // Elimina dati più vecchi di 6 mesi
-        $cleanup_date = date('Y-m-d H:i:s', strtotime('-6 months'));
-        
-        // Tabella tornei
-        $wpdb->query(
+        try {
+            // 1. Aggiorna stato tornei
+            $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$wpdb->prefix}eto_tournaments
+                    SET status = 
+                        CASE 
+                            WHEN start_date <= %s AND status = 'pending' THEN 'active'
+                            WHEN end_date <= %s AND status = 'active' THEN 'completed'
+                            ELSE status
+                        END",
+                    current_time('mysql'),
+                    current_time('mysql')
+                )
+            );
+
+            // 2. Notifiche tornei imminenti
+            $upcoming = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT * FROM {$wpdb->prefix}eto_tournaments
+                    WHERE start_date BETWEEN %s AND %s
+                    AND status = 'pending'",
+                    current_time('mysql'),
+                    date('Y-m-d H:i:s', strtotime('+1 hour'))
+                )
+            );
+
+            foreach ($upcoming as $tournament) {
+                if (class_exists('ETO_Emails')) {
+                    ETO_Emails::send_tournament_reminder($tournament->id);
+                }
+            }
+
+            // 3. Aggiorna leaderboard
+            if (class_exists('ETO_Swiss')) {
+                ETO_Swiss::calculate_tiebreakers_for_active();
+            }
+
+            error_log('[ETO] Hourly tasks eseguiti con successo');
+
+        } catch (Exception $e) {
+            error_log('[ETO] Errore tasks orari: ' . $e->getMessage());
+        }
+    }
+
+    public static function daily_cleanup() {
+        global $wpdb;
+        $cleanup_date = date('Y-m-d H:i:s', strtotime('-' . self::CLEANUP_DAYS . ' days'));
+
+        try {
+            // 1. Pulizia tornei completati
+            $wpdb->query(
+                $wpdb->prepare(
+                    "DELETE FROM {$wpdb->prefix}eto_tournaments
+                    WHERE end_date <= %s
+                    AND status = 'completed'",
+                    $cleanup_date
+                )
+            );
+
+            // 2. Pulizia partite vecchie
+            $wpdb->query(
+                $wpdb->prepare(
+                    "DELETE FROM {$wpdb->prefix}eto_matches
+                    WHERE confirmed_at <= %s
+                    AND status = 'completed'",
+                    $cleanup_date
+                )
+            );
+
+            // 3. Pulizia log
+            $wpdb->query(
+                $wpdb->prepare(
+                    "DELETE FROM {$wpdb->prefix}eto_audit_logs
+                    WHERE created_at <= %s",
+                    $cleanup_date
+                )
+            );
+
+            error_log('[ETO] Pulizia giornaliera completata');
+
+        } catch (Exception $e) {
+            error_log('[ETO] Errore pulizia giornaliera: ' . $e->getMessage());
+        }
+    }
+
+    // Nuovo metodo per tornei Swiss System
+    public static function calculate_tiebreakers_for_active() {
+        global $wpdb;
+
+        $active_tournaments = $wpdb->get_col(
             $wpdb->prepare(
-                "DELETE FROM {$wpdb->prefix}eto_tournaments 
-                WHERE end_date <= %s 
-                AND status = 'completed'",
-                $cleanup_date
+                "SELECT id FROM {$wpdb->prefix}eto_tournaments
+                WHERE status = 'active'
+                AND format = %s",
+                'swiss'
             )
         );
 
-        // Tabella matches
-        $wpdb->query(
-            $wpdb->prepare(
-                "DELETE FROM {$wpdb->prefix}eto_matches 
-                WHERE confirmed_at <= %s",
-                $cleanup_date
-            )
-        );
-
-        // Tabella audit log
-        $wpdb->query(
-            $wpdb->prepare(
-                "DELETE FROM {$wpdb->prefix}eto_audit_logs 
-                WHERE created_at <= %s",
-                $cleanup_date
-            )
-        );
+        foreach ($active_tournaments as $tournament_id) {
+            ETO_Swiss::calculate_tiebreakers($tournament_id);
+        }
     }
 }
