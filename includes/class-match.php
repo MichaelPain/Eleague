@@ -13,8 +13,6 @@ class ETO_Match {
 
     /**
      * Registra una nuova partita con controlli completi
-     * @param array $match_data Dati della partita
-     * @return int|WP_Error ID della partita o errore
      */
     public static function create($match_data) {
         global $wpdb;
@@ -64,16 +62,8 @@ class ETO_Match {
                 "{$wpdb->prefix}eto_matches",
                 $data,
                 [
-                    '%d', // tournament_id
-                    '%s', // round
-                    '%d', // team1_id
-                    '%d', // team2_id
-                    '%d', // winner_id
-                    '%s', // screenshot_url
-                    '%d', // reported_by
-                    '%s', // status
-                    '%s', // created_at
-                    '%s'  // updated_at
+                    '%d', '%s', '%d', '%d', '%d',
+                    '%s', '%d', '%s', '%s', '%s'
                 ]
             );
 
