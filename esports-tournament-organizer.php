@@ -39,6 +39,7 @@ $core_files = [
     'includes/class-multisite.php',
     'includes/class-riot-api.php',
     'includes/class-uploads.php',
+    'includes/class-unistaller.php',
     'includes/utilities.php',
     
     // Sistema
@@ -71,26 +72,11 @@ foreach ($core_files as $file) {
 // ==================================================
 // 3. REGISTRAZIONE HOOK PRINCIPALI
 // ==================================================
-register_activation_hook(__FILE__, function() {
-    ETO_Database::install();
-    ETO_User_Roles::setup_roles();
-    ETO_Cron::schedule_events();
-    
-    if (is_multisite()) {
-        require_once ETO_PLUGIN_DIR . 'includes/class-multisite.php';
-        ETO_Multisite::network_activate();
-    }
-});
+register_activation_hook(__FILE__, ['ETO_Activator', 'handle_activation']);
 
-register_deactivation_hook(__FILE__, function() {
-    ETO_Cron::clear_scheduled_events();
-    flush_rewrite_rules();
-});
+register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
 
-register_uninstall_hook(__FILE__, function() {
-    ETO_Database::uninstall();
-    ETO_User_Roles::remove_roles();
-});
+register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
 
 // ==================================================
 // 4. INIZIALIZZAZIONE COMPONENTI
