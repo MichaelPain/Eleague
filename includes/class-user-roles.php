@@ -19,7 +19,7 @@ class ETO_User_Roles {
         add_action('admin_init', [__CLASS__, 'add_admin_capabilities']); // Modificato
     }
 
-    private static function add_roles() {
+    public static function add_roles() {
         if (!get_role('tournament_organizer')) {
             add_role(
                 'tournament_organizer',
