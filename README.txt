@@ -7,6 +7,10 @@ Stable tag: 1.1.0
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
+== Introduzione ==
+Il plugin non è ancora completo, usatelo a vostro rischio e pericolo. 
+Sono alla ricerca di collaboratori per ultimare il lavoro.
+
 == Descrizione ==
 eSports Tournament Organizer è un plugin per WordPress che consente la gestione completa di tornei eSports. Include funzionalità per:
 - Creazione di tornei con formati Single Elimination, Double Elimination e Swiss System.
