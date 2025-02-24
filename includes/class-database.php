@@ -1,21 +1,12 @@
 <?php
-/**
- * Gestione del database del plugin
- * @package eSports Tournament Organizer
- * @since 2.5.1
- */
-
 class ETO_Database {
+    const DB_VERSION = '2.5.0';
     const DB_OPTION = 'eto_db_version';
-    const DB_VERSION = '2.5.1';
 
-    /**
-     * Crea/aggiorna le tabelle
-     */
     public static function install() {
         global $wpdb;
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-
+        
         try {
             $charset_collate = $wpdb->get_charset_collate();
 
@@ -35,13 +26,13 @@ class ETO_Database {
                 created_by BIGINT(20) UNSIGNED NOT NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
+                PRIMARY KEY  (id),
                 INDEX tournament_status_idx (status),
                 INDEX tournament_dates_idx (start_date, end_date)
             ) ENGINE=InnoDB $charset_collate;";
             dbDelta($sql);
 
-            // 2. Tabella Team
+            // 2. Tabella Team (aggiunto tiebreaker)
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_teams (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 tournament_id BIGINT(20) UNSIGNED NOT NULL,
@@ -54,7 +45,7 @@ class ETO_Database {
                 status ENUM('pending','registered','checked_in','disqualified') NOT NULL DEFAULT 'pending',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
+                PRIMARY KEY  (id),
                 FOREIGN KEY (tournament_id) REFERENCES {$wpdb->prefix}eto_tournaments(id) ON DELETE CASCADE,
                 INDEX team_tournament_idx (tournament_id),
                 INDEX team_status_idx (status),
@@ -72,7 +63,7 @@ class ETO_Database {
                 nationality CHAR(2),
                 is_captain BOOLEAN NOT NULL DEFAULT FALSE,
                 joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
+                PRIMARY KEY  (id),
                 FOREIGN KEY (team_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
                 UNIQUE KEY user_team_unique (user_id, team_id),
                 INDEX member_team_idx (team_id)
@@ -95,7 +86,7 @@ class ETO_Database {
                 status ENUM('pending','completed','disputed') NOT NULL DEFAULT 'pending',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
+                PRIMARY KEY  (id),
                 FOREIGN KEY (tournament_id) REFERENCES {$wpdb->prefix}eto_tournaments(id) ON DELETE CASCADE,
                 FOREIGN KEY (team1_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
                 FOREIGN KEY (team2_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
@@ -115,7 +106,7 @@ class ETO_Database {
                 details TEXT,
                 ip_address VARCHAR(45) NOT NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
+                PRIMARY KEY  (id),
                 INDEX log_action_idx (action_type),
                 INDEX log_object_idx (object_type, object_id),
                 INDEX log_user_idx (user_id)
@@ -123,8 +114,6 @@ class ETO_Database {
             dbDelta($sql);
 
             update_option(self::DB_OPTION, self::DB_VERSION);
-
-            // Migrazioni
             self::maybe_update_db();
 
         } catch (Exception $e) {
@@ -133,12 +122,8 @@ class ETO_Database {
         }
     }
 
-    /**
-     * Disinstalla le tabelle
-     */
     public static function uninstall() {
         global $wpdb;
-
         $tables = [
             'eto_audit_logs',
             'eto_matches',
@@ -156,12 +141,9 @@ class ETO_Database {
         delete_option('eto_email_settings');
     }
 
-    /**
-     * Aggiorna il database se necessario
-     */
     public static function maybe_update_db() {
         $current_version = get_option(self::DB_OPTION, '1.0.0');
-
+        
         if (version_compare($current_version, self::DB_VERSION, '<')) {
             self::install();
             
@@ -171,19 +153,30 @@ class ETO_Database {
         }
     }
 
-    /**
-     * Migrazione per la versione 2.0.0
-     */
     private static function migrate_to_v2() {
         global $wpdb;
-
-        // Aggiungi colonna tiebreaker
+        
+        // Aggiungi colonna tiebreaker se mancante
         if (!$wpdb->get_var("SHOW COLUMNS FROM {$wpdb->prefix}eto_teams LIKE 'tiebreaker'")) {
             $wpdb->query("ALTER TABLE {$wpdb->prefix}eto_teams 
-                        ADD tiebreaker MEDIUMINT(8) NOT NULL DEFAULT 0 AFTER points_diff");
+                        ADD tiebreaker MEDIUMINT(8) NOT NULL DEFAULT 0 
+                        AFTER points_diff");
         }
 
-        // Aggiungi nuovi indici
-        $wpdb->query("CREATE INDEX team_ranking_idx ON {$wpdb->prefix}eto_teams (wins DESC, points_diff DESC, tiebreaker DESC)");
+        // Verifica esistenza indice prima di crearlo
+        $index_exists = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = %s 
+                AND INDEX_NAME = 'team_ranking_idx'",
+                $wpdb->prefix . 'eto_teams'
+            )
+        );
+
+        if (!$index_exists) {
+            $wpdb->query("CREATE INDEX team_ranking_idx 
+                        ON {$wpdb->prefix}eto_teams (wins DESC, points_diff DESC, tiebreaker DESC)");
+        }
     }
 }
