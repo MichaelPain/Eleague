@@ -16,7 +16,7 @@ class ETO_User_Roles {
 
     public static function init() {
         add_action('init', [__CLASS__, 'add_roles']);
-        add_action('admin_init', [__CLASS__, 'add_admin_capabilities']); // Modificato
+        add_action('admin_init', [__CLASS__, 'add_admin_capabilities'], 9999);
     }
 
     public static function add_roles() {
@@ -37,7 +37,7 @@ class ETO_User_Roles {
     }
 
     // Nuovo metodo dedicato per admin
-    private static function add_admin_capabilities() {
+    public static function add_admin_capabilities() {
         $admin_role = get_role('administrator');
         
         if ($admin_role) {
