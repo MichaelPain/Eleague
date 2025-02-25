@@ -48,7 +48,6 @@ $core_files = [
     'includes/class-cron.php',
     'includes/class-audit-log.php',
     'includes/class-ajax-handler.php',
-    'includes/class-shortcodes.php',
 
     // Frontend
     'public/shortcodes.php',
