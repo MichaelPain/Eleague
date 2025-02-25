@@ -104,6 +104,45 @@ class ETO_Tournament {
         }
     }
 
+    public static function handle_tournament_creation() {
+        if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'eto_create_tournament_nonce')) {
+            wp_die(__('Verifica di sicurezza fallita', 'eto'));
+        }
+
+        if (!current_user_can('manage_eto_tournaments')) {
+            wp_die(__('Permessi insufficienti', 'eto'));
+        }
+
+        $data = [
+            'name' => sanitize_text_field($_POST['tournament_name']),
+            'format' => sanitize_key($_POST['format']),
+            'start_date' => sanitize_text_field($_POST['start_date']),
+            'end_date' => sanitize_text_field($_POST['end_date']),
+            'game_type' => sanitize_key($_POST['game_type']),
+            'min_players' => absint($_POST['min_players']),
+            'max_players' => absint($_POST['max_players']),
+            'checkin_enabled' => isset($_POST['checkin_enabled']) ? 1 : 0,
+            'third_place_match' => isset($_POST['third_place_match']) ? 1 : 0
+        ];
+
+        $result = self::create($data);
+
+        if (is_wp_error($result)) {
+            add_settings_error(
+                'eto_tournament_errors',
+                'tournament_creation_failed',
+                $result->get_error_message(),
+                'error'
+            );
+            set_transient('eto_form_data', $_POST, 45);
+            wp_redirect(wp_get_referer());
+            exit;
+        }
+
+        wp_redirect(admin_url('admin.php?page=eto-tournaments&created=1'));
+        exit;
+    }
+
     public static function update_status($tournament_id, $new_status) {
         global $wpdb;
 
@@ -220,7 +259,6 @@ class ETO_Tournament {
         );
     }
 
-    // MODIFICATO: Aggiunto filtro per escludere i tornei eliminati
     public static function get_all() {
         global $wpdb;
         return $wpdb->get_results(
@@ -314,3 +352,5 @@ class ETO_Tournament {
         return $wpdb->get_var($params ? $wpdb->prepare($query, $params) : $query);
     }
 }
+
+add_action('admin_post_eto_create_tournament', ['ETO_Tournament', 'handle_tournament_creation']);
