@@ -1,7 +1,7 @@
 <?php
 class ETO_Team {
-    const MAX_MEMBERS = 6;
-    const MIN_MEMBERS = 3;
+    const MAX_MEMBERS = 9;
+    const MIN_MEMBERS = 1;
     const STATUS_PENDING = 'pending';
     const STATUS_CHECKED_IN = 'checked_in';
     const NATIONALITY_LENGTH = 2;
