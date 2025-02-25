@@ -4,8 +4,10 @@ class ETO_Settings_Register {
 
     public static function init() {
         add_action('admin_init', [__CLASS__, 'register_settings']);
+        add_action('admin_menu', [__CLASS__, 'add_admin_menus']);
     }
 
+    // 1. REGISTRAZIONE IMPOSTAZIONI (ESISTENTE)
     public static function register_settings() {
         register_setting('eto_settings_group', 'eto_riot_api_key', [
             'type' => 'string',
@@ -20,8 +22,6 @@ class ETO_Settings_Register {
             'default' => false,
             'show_in_rest' => false
         ]);
-
-        if (!current_user_can(self::CAPABILITY)) return;
 
         add_settings_section(
             'eto_main_section',
@@ -57,6 +57,61 @@ class ETO_Settings_Register {
         );
     }
 
+    // 2. MENU ADMIN (NUOVA IMPLEMENTAZIONE)
+    public static function add_admin_menus() {
+        add_menu_page(
+            esc_html__('Gestione Tornei', 'eto'),
+            esc_html__('Tornei eSports', 'eto'),
+            'manage_eto_tournaments',
+            'eto-tournaments',
+            [__CLASS__, 'render_tournaments_page'],
+            'dashicons-awards',
+            6
+        );
+
+        add_submenu_page(
+            'eto-tournaments',
+            esc_html__('Crea Nuovo Torneo', 'eto'),
+            esc_html__('Crea Torneo', 'eto'),
+            'manage_eto_tournaments',
+            'eto-create-tournament',
+            [__CLASS__, 'render_create_tournament_page']
+        );
+
+        add_submenu_page(
+            'eto-tournaments',
+            esc_html__('Impostazioni Plugin', 'eto'),
+            esc_html__('Impostazioni', 'eto'),
+            'manage_eto_settings',
+            'eto-settings',
+            [__CLASS__, 'render_settings_page']
+        );
+    }
+
+    // 3. RENDER PAGINE (INTEGRAZIONE CON I NUOVI TEMPLATE)
+    public static function render_tournaments_page() {
+        if (!current_user_can('manage_eto_tournaments')) {
+            wp_die(esc_html__('Accesso negato.', 'eto'));
+        }
+        include ETO_PLUGIN_DIR . 'admin/views/tournaments.php';
+    }
+
+    public static function render_create_tournament_page() {
+        if (!current_user_can('manage_eto_tournaments')) {
+            wp_die(esc_html__('Accesso negato.', 'eto'));
+        }
+        include ETO_PLUGIN_DIR . 'admin/views/create-tournament.php';
+    }
+
+    public static function render_settings_page() {
+        if (!current_user_can('manage_eto_settings')) {
+            wp_die(esc_html__('Accesso negato.', 'eto'));
+        }
+        settings_errors();
+        include ETO_PLUGIN_DIR . 'admin/views/settings.php';
+    }
+
+    // 4. METODI ESISTENTI (INALTERATI)
     public static function settings_section_callback() {
         echo '<p>' . esc_html__('Inserisci le impostazioni del plugin eSports Tournament Organizer.', 'eto') . '</p>';
     }
