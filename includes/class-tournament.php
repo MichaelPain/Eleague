@@ -385,6 +385,68 @@ class ETO_Tournament {
             )
         );
     }
+
+    public static function handle_tournament_creation() {
+        global $wpdb;
+
+        try {
+            // Verifica Nonce
+            if (!isset($_POST['_eto_create_nonce']) || 
+                !wp_verify_nonce($_POST['_eto_create_nonce'], 'eto_create_tournament_action')) {
+                throw new Exception(
+                    __('Verifica di sicurezza fallita. Ricarica la pagina e riprova.', 'eto'),
+                    1001 // Codice errore custom
+                );
+            }
+
+            // Verifica Permessi
+            if (!current_user_can('manage_eto_tournaments')) {
+                throw new Exception(__('Permessi insufficienti per creare tornei', 'eto'), 1002);
+            }
+
+            // Elaborazione Dati
+            $data = [
+                'name' => sanitize_text_field($_POST['name']),
+                'format' => sanitize_key($_POST['format']),
+                'min_players' => absint($_POST['min_players']),
+                'max_players' => absint($_POST['max_players']),
+                'max_teams' => absint($_POST['max_teams']),
+                'start_date' => sanitize_text_field($_POST['start_date']),
+                'end_date' => sanitize_text_field($_POST['end_date']),
+                'game_type' => sanitize_key($_POST['game_type']),
+                'checkin_enabled' => isset($_POST['checkin_enabled']) ? 1 : 0,
+                'third_place_match' => isset($_POST['third_place_match']) ? 1 : 0
+            ];
+
+            // Creazione Torneo
+            $result = self::create($data);
+
+            if (is_wp_error($result)) {
+                throw new Exception($result->get_error_message(), $result->get_error_code());
+            }
+
+            // Redirect con successo
+            wp_redirect(admin_url('admin.php?page=eto-tournaments&created=1'));
+            exit;
+
+        } catch (Exception $e) {
+            // Setta transient con dati del form
+            set_transient('eto_form_data', $_POST, 45);
+
+            // Redirect con codice errore
+            switch ($e->getCode()) {
+                case 1001:
+                    wp_redirect(add_query_arg('nonce_error', 1, wp_get_referer()));
+                    break;
+                case 1002:
+                    wp_redirect(add_query_arg('permission_error', 1, wp_get_referer()));
+                    break;
+                default:
+                    wp_redirect(add_query_arg('creation_error', 1, wp_get_referer()));
+            }
+            exit;
+        }
+    }
 }
 
 // Gestione notifiche admin

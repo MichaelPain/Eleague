@@ -22,10 +22,7 @@ define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ETO_DB_VERSION', '3.2.1');
 define('ETO_TEMPLATE_DIR', ETO_PLUGIN_DIR . 'templates/');
-
-if (!defined('ETO_DEBUG_LOG')) {
-    define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log');
-}
+define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log');
 
 // ==================================================
 // 2. GESTIONE PERMESSI
@@ -34,28 +31,13 @@ register_activation_hook(__FILE__, 'eto_set_permissions_on_activation');
 add_action('admin_init', 'eto_verify_permissions');
 
 function eto_set_permissions_on_activation() {
-    $directories = [
-        ETO_PLUGIN_DIR . 'logs/',
-        ETO_PLUGIN_DIR . 'uploads/',
-        ETO_PLUGIN_DIR . 'keys/'
-    ];
+    $directories = [ETO_PLUGIN_DIR . 'logs/', ETO_PLUGIN_DIR . 'uploads/', ETO_PLUGIN_DIR . 'keys/'];
     
     foreach ($directories as $dir) {
         if (!file_exists($dir)) {
             wp_mkdir_p($dir);
         }
         @chmod($dir, 0755);
-    }
-
-    $files = [
-        ETO_PLUGIN_DIR . 'includes/config.php' => 0600,
-        ETO_PLUGIN_DIR . 'keys/riot-api.key' => 0600
-    ];
-
-    foreach ($files as $file => $perms) {
-        if (file_exists($file)) {
-            @chmod($file, $perms);
-        }
     }
 }
 
@@ -88,24 +70,6 @@ function eto_verify_permissions() {
             }
         }
     }
-
-    foreach ($required['files'] as $path => $expected) {
-        if (file_exists($path)) {
-            $current = fileperms($path) & 0777;
-            if ($current !== $expected) {
-                add_action('admin_notices', function() use ($path, $expected, $current) {
-                    echo '<div class="notice notice-error"><p>';
-                    printf(
-                        esc_html__('Permessi file non corretti: %s (Attuali: %o, Richiesti: %o)', 'eto'),
-                        esc_html($path),
-                        $current,
-                        $expected
-                    );
-                    echo '</p></div>';
-                });
-            }
-        }
-    }
 }
 
 // ==================================================
@@ -119,7 +83,7 @@ $core_files = [
     'includes/class-deactivator.php',
     'includes/class-uninstaller.php',
     'includes/class-tournament.php',
-    'includes/class-team.php', 
+    'includes/class-team.php',
     'includes/class-match.php',
     'includes/class-swiss.php',
     'includes/class-emails.php',
@@ -153,7 +117,7 @@ foreach ($core_files as $file) {
 }
 
 // ==================================================
-// 4. REGISTRAZIONE HOOK PRINCIPALI (MODIFICATO)
+// 4. REGISTRAZIONE HOOK PRINCIPALI
 // ==================================================
 register_activation_hook(__FILE__, function() {
     try {
@@ -162,7 +126,7 @@ register_activation_hook(__FILE__, function() {
         ETO_Database::install();
         ETO_Database::maybe_update_db();
     } catch (Exception $e) {
-        error_log('[ETO] Activation Error: ' . $e->getMessage());
+        error_log("[ETO] Activation Error: " . $e->getMessage());
         wp_die(
             '<h1>' . esc_html__('Errore attivazione plugin', 'eto') . '</h1>' .
             '<p>' . esc_html($e->getMessage()) . '</p>' .
@@ -171,7 +135,6 @@ register_activation_hook(__FILE__, function() {
     }
 });
 
-// HOOK CORRETTO PER LA CREAZIONE TORNEI
 add_action('admin_post_eto_create_tournament', ['ETO_Tournament', 'handle_tournament_creation']);
 add_action('admin_post_nopriv_eto_create_tournament', function() {
     wp_die(__('Accesso non autorizzato', 'eto'), 403);
@@ -184,24 +147,16 @@ register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
 // 5. INIZIALIZZAZIONE COMPONENTI
 // ==================================================
 add_action('plugins_loaded', function() {
-    // Traduzioni
-    load_plugin_textdomain(
-        'eto',
-        false,
-        dirname(plugin_basename(__FILE__)) . '/languages/'
-    );
+    load_plugin_textdomain('eto', false, dirname(plugin_basename(__FILE__)) . '/languages/');
 
-    // Aggiornamento DB
     if (version_compare(get_option('eto_db_version', '1.0.0'), ETO_DB_VERSION, '<')) {
         ETO_Database::maybe_update_db();
     }
 
-    // Caricamento admin
     if (is_admin() && !defined('DOING_AJAX')) {
         ETO_Settings_Register::init();
     }
 
-    // Shortcode
     ETO_Shortcodes::init();
 });
 
