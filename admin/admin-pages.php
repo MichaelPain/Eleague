@@ -48,7 +48,6 @@ class ETO_Settings_Register {
             ['label_for' => 'eto_email_enabled']
         );
 
-        // Nuovo campo installatore
         add_settings_field(
             'eto_installer_info',
             esc_html__('Utente Installatore', 'eto'),
@@ -82,7 +81,6 @@ class ETO_Settings_Register {
         echo '<label for="eto_email_enabled">' . esc_html__('Abilita l\'invio automatico di notifiche via email', 'eto') . '</label>';
     }
 
-    // Nuovo callback per l'info installatore
     public static function installer_info_callback() {
         $installer_id = ETO_Installer::get_original_installer();
         $user = $installer_id ? get_userdata($installer_id) : null;
