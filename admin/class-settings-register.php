@@ -1,4 +1,6 @@
 <?php
+
+if (!class_exists('ETO_Settings_Register')) {
 class ETO_Settings_Register {
     const CAPABILITY = 'manage_eto_settings';
 
@@ -94,6 +96,7 @@ class ETO_Settings_Register {
     public static function sanitize_boolean($input) {
         return (bool) absint($input);
     }
+}
 }
 
 ETO_Settings_Register::init();
