@@ -28,7 +28,88 @@ if (!defined('ETO_DEBUG_LOG')) {
 }
 
 // ==================================================
-// 2. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ
+// 2. GESTIONE PERMESSI
+// ==================================================
+register_activation_hook(__FILE__, 'eto_set_permissions_on_activation');
+add_action('admin_init', 'eto_verify_permissions');
+
+function eto_set_permissions_on_activation() {
+    $directories = [
+        ETO_PLUGIN_DIR . 'logs/',
+        ETO_PLUGIN_DIR . 'uploads/',
+        ETO_PLUGIN_DIR . 'keys/'
+    ];
+    
+    foreach ($directories as $dir) {
+        if (!file_exists($dir)) {
+            wp_mkdir_p($dir);
+        }
+        @chmod($dir, 0755);
+    }
+
+    $files = [
+        ETO_PLUGIN_DIR . 'includes/config.php' => 0600,
+        ETO_PLUGIN_DIR . 'keys/riot-api.key' => 0600
+    ];
+
+    foreach ($files as $file => $perms) {
+        if (file_exists($file)) {
+            @chmod($file, $perms);
+        }
+    }
+}
+
+function eto_verify_permissions() {
+    $required = [
+        'directories' => [
+            ETO_PLUGIN_DIR . 'logs/' => 0755,
+            ETO_PLUGIN_DIR . 'uploads/' => 0755
+        ],
+        'files' => [
+            ETO_PLUGIN_DIR . 'includes/config.php' => 0600,
+            ETO_PLUGIN_DIR . 'keys/riot-api.key' => 0600
+        ]
+    ];
+
+    foreach ($required['directories'] as $path => $expected) {
+        if (file_exists($path)) {
+            $current = fileperms($path) & 0777;
+            if ($current !== $expected) {
+                add_action('admin_notices', function() use ($path, $expected, $current) {
+                    echo '<div class="notice notice-error">';
+                    echo '<p>'.sprintf(
+                        __('Permessi directory non corretti: %s (Attuali: %o, Richiesti: %o)', 'eto'),
+                        esc_html($path),
+                        $current,
+                        $expected
+                    ).'</p>';
+                    echo '</div>';
+                });
+            }
+        }
+    }
+
+    foreach ($required['files'] as $path => $expected) {
+        if (file_exists($path)) {
+            $current = fileperms($path) & 0777;
+            if ($current !== $expected) {
+                add_action('admin_notices', function() use ($path, $expected, $current) {
+                    echo '<div class="notice notice-error">';
+                    echo '<p>'.sprintf(
+                        __('Permessi file non corretti: %s (Attuali: %o, Richiesti: %o)', 'eto'),
+                        esc_html($path),
+                        $current,
+                        $expected
+                    ).'</p>';
+                    echo '</div>';
+                });
+            }
+        }
+    }
+}
+
+// ==================================================
+// 3. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ
 // ==================================================
 $core_files = [
     // Database e migrazioni
@@ -81,7 +162,7 @@ foreach ($core_files as $file) {
 }
 
 // ==================================================
-// 3. REGISTRAZIONE HOOK PRINCIPALI
+// 4. REGISTRAZIONE HOOK PRINCIPALI
 // ==================================================
 register_activation_hook(__FILE__, function() {
     try {
@@ -99,16 +180,11 @@ register_activation_hook(__FILE__, function() {
     }
 });
 
-if (class_exists('ETO_Deactivator')) {
-    register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
-}
-
-if (class_exists('ETO_Uninstaller')) {
-    register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
-}
+register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
+register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
 
 // ==================================================
-// 4. INIZIALIZZAZIONE COMPONENTI
+// 5. INIZIALIZZAZIONE COMPONENTI
 // ==================================================
 add_action('plugins_loaded', function() {
     // Traduzioni
@@ -124,18 +200,16 @@ add_action('plugins_loaded', function() {
     }
 
     // Caricamento admin
-    if (is_admin() && !defined('DOING_AJAX') && class_exists('ETO_Settings_Register')) {
+    if (is_admin() && !defined('DOING_AJAX')) {
         ETO_Settings_Register::init();
     }
 
     // Shortcode
-    if (class_exists('ETO_Shortcodes')) {
-        ETO_Shortcodes::init();
-    }
+    ETO_Shortcodes::init();
 });
 
 // ==================================================
-// 5. GESTIONE ERRORI E DEBUG
+// 6. GESTIONE ERRORI E DEBUG
 // ==================================================
 if (defined('WP_DEBUG') && WP_DEBUG) {
     ini_set('display_errors', '0');
@@ -155,11 +229,28 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
 }
 
 // ==================================================
-// 6. SUPPORTO MULTISITO
+// 7. INTEGRAZIONE WP-CLI
 // ==================================================
-if (is_multisite() && file_exists(ETO_PLUGIN_DIR . 'includes/class-multisite.php')) {
+if (defined('WP_CLI') && WP_CLI) {
+    WP_CLI::add_command('eto permissions', function($args) {
+        $script_path = ETO_PLUGIN_DIR . 'bin/set-permissions.sh';
+        if (file_exists($script_path)) {
+            system("bash {$script_path}", $return_val);
+            if ($return_val === 0) {
+                WP_CLI::success('Permessi configurati correttamente');
+            } else {
+                WP_CLI::error('Errore durante l\'esecuzione dello script');
+            }
+        } else {
+            WP_CLI::error('Script per i permessi non trovato');
+        }
+    });
+}
+
+// ==================================================
+// 8. SUPPORTO MULTISITO
+// ==================================================
+if (is_multisite()) {
     require_once ETO_PLUGIN_DIR . 'includes/class-multisite.php';
-    if (class_exists('ETO_Multisite')) {
-        ETO_Multisite::init();
-    }
+    ETO_Multisite::init();
 }

@@ -1,6 +1,6 @@
 <?php
 class ETO_Installer {
-    const INSTALLER_META = '_eto_super_installer'; // Aggiunta costante
+    const INSTALLER_META = '_eto_super_installer';
     private static $caps = [
         'manage_eto_full',
         'manage_eto_tournaments',
@@ -21,14 +21,14 @@ class ETO_Installer {
         'edit_eto_tournaments' => true
     ];
 
-    // Nuovo metodo per ottenere l'installatore
     public static function get_original_installer() {
         return get_site_option(self::INSTALLER_META);
     }
 
     public static function revoke_privileges() {
-        if ($user_id = get_site_option(self::INSTALLER_META)) {
-            $user = get_user_by('id', $user_id);
+        $user_id = get_site_option(self::INSTALLER_META);
+        if ($user_id) {
+            $user = get_user_by('id', absint($user_id));
             foreach (self::$caps as $cap) {
                 $user->remove_cap($cap);
             }
