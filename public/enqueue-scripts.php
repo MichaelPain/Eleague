@@ -4,6 +4,8 @@ defined('ABSPATH') || exit;
 // Carica la classe Ajax Handler
 require_once ETO_PLUGIN_DIR . 'includes/class-ajax-handler.php';
 
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' *.riotgames.com");
+
 // Registra script e stili per il frontend
 function eto_enqueue_public_assets() {
     // CSS Frontend

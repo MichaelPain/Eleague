@@ -386,18 +386,18 @@ class ETO_Tournament {
         );
     }
 
-    public static function handle_tournament_creation() {
-        global $wpdb;
-
-        try {
-            // Verifica Nonce
-            if (!isset($_POST['_eto_create_nonce']) || 
-                !wp_verify_nonce($_POST['_eto_create_nonce'], 'eto_create_tournament_action')) {
-                throw new Exception(
-                    __('Verifica di sicurezza fallita. Ricarica la pagina e riprova.', 'eto'),
-                    1001 // Codice errore custom
-                );
-            }
+public static function handle_tournament_creation() {
+    global $wpdb;
+    
+    try {
+        // 1. Verifica Nonce
+        if (!isset($_POST['_eto_create_nonce']) || 
+            !wp_verify_nonce($_POST['_eto_create_nonce'], 'eto_create_tournament_action')) {
+            throw new Exception(
+                __('Verifica di sicurezza fallita.', 'eto'),
+                1001 // Codice errore custom
+            );
+        }
 
             // Verifica Permessi
             if (!current_user_can('manage_eto_tournaments')) {
