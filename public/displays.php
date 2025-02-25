@@ -2,10 +2,12 @@
 if (!defined('ABSPATH')) exit;
 
 function eto_display_tournament_details($tournament_id) {
-    $tournament = ETO_Tournament::get($tournament_id);
+    $tournament = ETO_Tournament::get(absint($tournament_id));
     if (!$tournament) return;
 
     $current_teams = ETO_Team::count($tournament_id);
+    $max_teams = max(1, $tournament->max_teams); // Previene divisione per zero
+    $progress_width = ($current_teams / $max_teams) * 100;
     $registration_status = $current_teams < $tournament->max_teams 
         ? __('Apertura Registrazioni', 'eto') 
         : __('Registrazioni Chiuse', 'eto');
@@ -57,7 +59,7 @@ function eto_display_tournament_details($tournament_id) {
             </div>
             <div class="progress-bar">
                 <div class="progress-fill" 
-                     style="width: <?php echo esc_attr(($current_teams / $tournament->max_teams) * 100); ?>%">
+                     style="width: <?php echo esc_attr($progress_width); ?>%">
                 </div>
             </div>
         </div>
@@ -74,25 +76,29 @@ function eto_display_tournament_details($tournament_id) {
 }
 
 function eto_display_tournament_bracket($tournament_id) {
-    $tournament = ETO_Tournament::get($tournament_id);
-    $max_teams = $tournament->max_teams;
-    $teams = ETO_Team::get_all($tournament_id);
-    
+    $tournament = ETO_Tournament::get(absint($tournament_id));
+    if (!$tournament) return;
+
+    $matches = ETO_Match::get_all($tournament_id);
     echo '<div class="eto-bracket-container">';
     
     if ($tournament->format === 'swiss') {
         ETO_Swiss::display_rounds($tournament_id);
     } else {
         // Logica per eliminazione diretta/doppia
-        $max_rounds = log($max_teams, 2);
+        $max_rounds = ceil(log(max(1, $tournament->max_teams), 2));
         for ($i = 1; $i <= $max_rounds; $i++) {
             echo '<div class="eto-round">';
             echo '<h3>' . sprintf(__('Round %d', 'eto'), $i) . '</h3>';
-            // Visualizza le partite del round...
+            $round_matches = array_filter($matches, function($m) use ($i) {
+                return $m->round == "Round $i";
+            });
+            foreach ($round_matches as $match) {
+                echo '<div class="eto-match">' . esc_html($match->team1_name) . ' vs ' . esc_html($match->team2_name) . '</div>';
+            }
             echo '</div>';
         }
     }
-    
     echo '</div>';
 }
 
@@ -103,10 +109,14 @@ add_shortcode('tournament_view', function($atts) {
         'show_bracket' => true
     ], $atts);
 
+    if (!ETO_Tournament::exists(absint($atts['id']))) {
+        return '<div class="eto-error">' . esc_html__('Torneo non trovato', 'eto') . '</div>';
+    }
+
     ob_start();
-    eto_display_tournament_details($atts['id']);
+    eto_display_tournament_details(absint($atts['id']));
     if ($atts['show_bracket']) {
-        eto_display_tournament_bracket($atts['id']);
+        eto_display_tournament_bracket(absint($atts['id']));
     }
     return ob_get_clean();
 });

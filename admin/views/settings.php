@@ -1,39 +1,65 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-// Verifica permessi e nonce
-if (!current_user_can('manage_options')) {
-    wp_die(__('Accesso negato.', 'eto'));
+// Verifica permessi utente
+if (!current_user_can('manage_eto_settings')) {
+    wp_die(__('Accesso negato', 'eto'));
 }
 
-$options = get_option('eto_plugin_settings');
+// Caricamento impostazioni
+$settings = get_option('eto_riot_api_key', [
+    'riot_api' => '',
+    'email_enabled' => true
+]);
+
+// Salvataggio impostazioni
+if (isset($_POST['submit'])) {
+    check_admin_referer('eto_save_settings', '_wpnonce');
+    
+    // **Crittografia chiave API**
+    $api_key = sanitize_text_field($_POST['eto_riot_api_key']);
+    update_option('eto_riot_api_key', base64_encode($api_key));
+    
+    // Aggiornamento altre opzioni
+    update_option('eto_email_enabled', isset($_POST['email_enabled']) ? 1 : 0);
+    
+    // **Feedback utente**
+    eto_redirect_with_message(
+        admin_url('admin.php?page=eto-settings'),
+        esc_html__('Impostazioni salvate!', 'eto')
+    );
+    exit;
+}
 ?>
 
-<div class="wrap">
-    <h1><?php esc_html_e('Impostazioni Plugin Tornei', 'eto'); ?></h1>
-    
-    <form method="post" action="options.php">
-        <?php 
-        settings_fields('eto_settings_group');
-        do_settings_sections('eto_settings_page');
-        wp_nonce_field('eto_settings_action', '_eto_settings_nonce');
-        submit_button(); 
-        ?>
-    </form>
+<div class="eto-settings-container">
+    <form method="post" action="<?php echo admin_url('admin-post.php?action=eto_save_settings'); ?>">
+        <?php wp_nonce_field('eto_save_settings', '_wpnonce'); ?>
+        
+        <div class="eto-settings-section">
+            <h3><?php esc_html_e('API Riot Games', 'eto'); ?></h3>
+            <p><?php esc_html_e('Inserisci la tua API Key Riot Games:', 'eto'); ?></p>
+            <input type="password" 
+                   name="eto_riot_api_key" 
+                   value="<?php echo esc_attr(base64_decode($settings['riot_api'])); ?>" 
+                   placeholder="<?php esc_attr_e('Chiave API', 'eto'); ?>">
+        </div>
 
-    <!-- Sezione avanzata per API -->
-    <div class="card">
-        <h2><?php esc_html_e('Configurazione API', 'eto'); ?></h2>
-        <table class="form-table">
-            <tr>
-                <th><label for="eto_riot_api"><?php esc_html_e('Riot API Key', 'eto'); ?></label></th>
-                <td>
-                    <input type="password" id="eto_riot_api" name="eto_plugin_settings[riot_api]" 
-                        value="<?php echo esc_attr(base64_decode($options['riot_api'] ?? '')); ?>" 
-                        class="regular-text">
-                    <p class="description"><?php esc_html_e('Usa una chiave valida cifrata in base64', 'eto'); ?></p>
-                </td>
-            </tr>
-        </table>
-    </div>
+        <div class="eto-settings-section">
+            <h3><?php esc_html_e('Notifiche Email', 'eto'); ?></h3>
+            <label>
+                <input type="checkbox" 
+                       name="email_enabled" 
+                       <?php checked($settings['email_enabled'], 1); ?>>
+                <?php esc_html_e('Abilita notifiche email', 'eto'); ?>
+            </label>
+        </div>
+
+        <p class="submit">
+            <input type="submit" 
+                   name="submit" 
+                   class="button button-primary" 
+                   value="<?php esc_attr_e('Salva Impostazioni', 'eto'); ?>">
+        </p>
+    </form>
 </div>

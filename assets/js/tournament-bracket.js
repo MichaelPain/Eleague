@@ -1,11 +1,24 @@
 jQuery(document).ready(function($) {
-    $('#bracket').bracket({
-        init: <?php echo json_encode($bracket_data); ?>
-    });
+    // Inizializzazione bracket con controllo dati
+    if (window.etoBracketData) {
+        $('#bracket').bracket({
+            init: window.etoBracketData
+        });
+    } else {
+        console.error('Dati bracket non trovati');
+    }
 });
 
-jQuery(document).ready(function($) {
-    $('#bracket').bracket({
-        init: window.etoBracketData
-    });
-});
+// Aggiunta logica di aggiornamento dinamico
+const updateInterval = setInterval(() => {
+    fetch('/wp-json/eto/v1/bracket/' + window.etoBracketId)
+        .then(response => response.json())
+        .then(data => {
+            if (data && Array.isArray(data.matches)) {
+                $('#bracket').bracket({ init: data });
+            } else {
+                console.warn('Dati bracket non validi durante aggiornamento');
+            }
+        })
+        .catch(error => console.error('Errore aggiornamento bracket:', error));
+}, 30000);

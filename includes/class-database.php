@@ -1,4 +1,6 @@
 <?php
+if (!defined('ABSPATH')) exit;
+
 class ETO_Database {
     const DB_VERSION = '3.0.0';
     const DB_OPTION = 'eto_db_version';
@@ -6,12 +8,8 @@ class ETO_Database {
     public static function install() {
         global $wpdb;
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-
-        $charset_collate = $wpdb->get_charset_collate();
-
         try {
-            // 1. Tabella Tornei (con max_teams aggiunto)
+            // Tabella Tornei
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_tournaments (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 name VARCHAR(255) NOT NULL,
@@ -32,10 +30,9 @@ class ETO_Database {
                 INDEX tournament_status_idx (status),
                 INDEX tournament_dates_idx (start_date, end_date)
             ) ENGINE=InnoDB $charset_collate;";
-
             dbDelta($sql);
 
-            // 2. Tabella Team
+            // Tabella Team
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_teams (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 tournament_id BIGINT(20) UNSIGNED NOT NULL,
@@ -52,10 +49,9 @@ class ETO_Database {
                 FOREIGN KEY (tournament_id) REFERENCES {$wpdb->prefix}eto_tournaments(id) ON DELETE CASCADE,
                 INDEX team_status_idx (status)
             ) ENGINE=InnoDB $charset_collate;";
-
             dbDelta($sql);
 
-            // 3. Tabella Membri Team
+            // Tabella Membri Team
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_team_members (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 team_id BIGINT(20) UNSIGNED NOT NULL,
@@ -69,10 +65,9 @@ class ETO_Database {
                 FOREIGN KEY (team_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
                 UNIQUE KEY user_team_unique (user_id, team_id)
             ) ENGINE=InnoDB $charset_collate;";
-
             dbDelta($sql);
 
-            // 4. Tabella Partite
+            // Tabella Partite
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_matches (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 tournament_id BIGINT(20) UNSIGNED NOT NULL,
@@ -94,10 +89,9 @@ class ETO_Database {
                 FOREIGN KEY (team2_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
                 INDEX match_status_idx (status)
             ) ENGINE=InnoDB $charset_collate;";
-
             dbDelta($sql);
 
-            // 5. Tabella Audit Log
+            // Tabella Audit Log
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_audit_logs (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 user_id BIGINT(20) UNSIGNED NOT NULL,
@@ -110,12 +104,10 @@ class ETO_Database {
                 PRIMARY KEY (id),
                 INDEX log_action_idx (action_type)
             ) ENGINE=InnoDB $charset_collate;";
-
             dbDelta($sql);
 
             update_option(self::DB_OPTION, self::DB_VERSION);
             self::maybe_update_db();
-
         } catch (Exception $e) {
             error_log('[ETO] Database Error: ' . $e->getMessage());
             wp_die(__('Errore durante l\'installazione del database.', 'eto'));
@@ -125,24 +117,20 @@ class ETO_Database {
     public static function uninstall() {
         global $wpdb;
 
-        $tables = $wpdb->get_col(
-            $wpdb->prepare(
-                "SHOW TABLES LIKE %s",
-                $wpdb->prefix . 'eto_%'
-            )
-        );
-
+        // **Eliminazione sicura con prepared statements**
+        $tables = $wpdb->get_col($wpdb->prepare("SHOW TABLES LIKE %s", $wpdb->prefix . 'eto_%'));
+        
         foreach ($tables as $table) {
             $wpdb->query($wpdb->prepare("DROP TABLE IF EXISTS %s", $table));
         }
 
+        // **Pulizia opzioni**
         $options = [
             self::DB_OPTION,
             'eto_riot_api_key',
             'eto_email_settings',
             'eto_plugin_settings'
         ];
-
         foreach ($options as $option) {
             delete_option($option);
             delete_site_option($option);
@@ -178,7 +166,6 @@ class ETO_Database {
         global $wpdb;
         $wpdb->query('START TRANSACTION');
         try {
-            // Migrazione originale mantenuta
             if (!$wpdb->get_var("SHOW COLUMNS FROM {$wpdb->prefix}eto_teams LIKE 'tiebreaker'")) {
                 $wpdb->query(
                     "ALTER TABLE {$wpdb->prefix}eto_teams

@@ -1,50 +1,23 @@
 <?php
+if (!defined('ABSPATH')) exit;
+
 class ETO_Riot_API {
     const API_BASE_URL = 'https://{region}.api.riotgames.com';
     const CACHE_EXPIRY = 3600; // 1 ora
-    private static $api_key;
 
-    public static function init() {
-        add_action('admin_init', [__CLASS__, 'verify_api_key']);
-    }
-
-    /**
-     * Ottieni la chiave API dal database
-     */
     private static function get_api_key() {
-        if (!self::$api_key) {
-            self::$api_key = get_option('eto_riot_api_key', '');
-        }
-        return self::$api_key;
+        return base64_decode(get_option('eto_riot_api_key', ''));
     }
 
-    /**
-     * Verifica validità della chiave API
-     */
-    public static function verify_api_key() {
-        $key = self::get_api_key();
-        if (empty($key)) return false;
-
-        $test_url = str_replace('{region}', 'euw1', self::API_BASE_URL) . '/lol/platform/v3/champion-rotations';
-        $response = self::make_request($test_url);
-
-        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
-            error_log('[ETO] Riot API Key Verification Failed');
-            return false;
-        }
-
-        return true;
+    private static function get_transient_key($region, $endpoint) {
+        return 'eto_riot_' . md5($region . $endpoint);
     }
 
-    /**
-     * Richiesta generica con cache e gestione errori
-     */
-    public static function make_request($url, $region = 'euw1') {
-        $url = str_replace('{region}', sanitize_text_field($region), $url);
-        $transient_key = 'eto_riot_' . md5($url);
+    public static function make_request($url, $region) {
+        // Verifica cache
+        $transient_key = self::get_transient_key($region, $url);
         $cached = get_transient($transient_key);
-
-        if ($cached !== false) {
+        if ($cached) {
             return $cached;
         }
 
@@ -60,15 +33,19 @@ class ETO_Riot_API {
 
         if (is_wp_error($response)) {
             error_log('[ETO] Riot API Error: ' . $response->get_error_message());
-            return $response;
+            return new WP_Error('riot_api_error', __('Errore API Riot Games', 'eto'), $response->get_error_data());
         }
 
-        $body = json_decode(wp_remote_retrieve_body($response), true);
         $status_code = wp_remote_retrieve_response_code($response);
+        $body = json_decode(wp_remote_retrieve_body($response), true);
 
         if ($status_code !== 200) {
             error_log("[ETO] Riot API Error {$status_code}: " . print_r($body, true));
-            return new WP_Error('riot_api_error', __('Errore API Riot Games', 'eto'), $body);
+            return new WP_Error(
+                'riot_api_error',
+                sprintf(__('Errore API (Code %d): %s', 'eto'), $status_code, wp_remote_retrieve_response_message($response)),
+                $body
+            );
         }
 
         set_transient($transient_key, $body, self::CACHE_EXPIRY);
@@ -81,7 +58,7 @@ class ETO_Riot_API {
     public static function get_summoner($summoner_name, $region = 'euw1') {
         $summoner_name = sanitize_text_field($summoner_name);
         $url = self::API_BASE_URL . '/lol/summoner/v4/summoners/by-name/' . rawurlencode($summoner_name);
-        return self::make_request($url, $region);
+        return self::make_request(str_replace('{region}', $region, $url), $region);
     }
 
     /**
@@ -112,8 +89,19 @@ class ETO_Riot_API {
         foreach ($teams as $team) {
             foreach ($team->members as $member) {
                 $puuid = self::get_puuid($member->user_id);
-                if ($puuid) {
-                    // Logica di sincronizzazione migliorata
+                if (!$puuid) {
+                    error_log("[ETO] Nessun PUUID trovato per l'utente {$member->user_id}");
+                    continue;
+                }
+
+                try {
+                    $matches = self::get_match_history($puuid);
+                    foreach ($matches as $match_id) {
+                        $match_data = self::get_match_details($match_id);
+                        ETO_Match::sync($tournament_id, self::format_match_data($match_data));
+                    }
+                } catch (Exception $e) {
+                    error_log("[ETO] Errore sincronizzazione match: " . $e->getMessage());
                 }
             }
         }
@@ -123,7 +111,7 @@ class ETO_Riot_API {
      * Ottieni PUUID da meta utente
      */
     private static function get_puuid($user_id) {
-        return get_user_meta(absint($user_id), 'riot_puuid', true);
+        return sanitize_key(get_user_meta(absint($user_id), 'riot_puuid', true));
     }
 
     /**

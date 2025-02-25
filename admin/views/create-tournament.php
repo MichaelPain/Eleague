@@ -1,6 +1,6 @@
-<?php
+<?php  
 if (!defined('ABSPATH')) exit;
-
+wp_nonce_field('eto_global_nonce');
 global $wpdb;
 
 $tournament = null;

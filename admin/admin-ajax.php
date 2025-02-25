@@ -1,8 +1,11 @@
 <?php
+if (!defined('ABSPATH')) exit;
+
+// Verifica nonce globale per tutte le azioni
+check_ajax_referer('eto_global_nonce', 'nonce');
+
 // Creazione torneo
 add_action('wp_ajax_eto_create_tournament', function() {
-    check_ajax_referer('eto_tournament_nonce', 'nonce');
-    
     $data = [
         'tournament_name' => sanitize_text_field($_POST['tournament_name']),
         'format' => sanitize_key($_POST['format']),
@@ -35,8 +38,8 @@ add_action('wp_ajax_eto_create_tournament', function() {
 // Conferma risultato via AJAX
 add_action('wp_ajax_eto_confirm_match', function() {
     $match_id = absint($_POST['match_id']);
-    check_ajax_referer('confirm_match_' . $match_id, 'nonce');
-
+    check_ajax_referer('eto_global_nonce', 'nonce');
+    
     if (!current_user_can('confirm_results')) {
         wp_send_json_error(
             ['message' => esc_html__('Permessi insufficienti', 'eto')],
@@ -45,7 +48,7 @@ add_action('wp_ajax_eto_confirm_match', function() {
     }
 
     $result = ETO_Match::confirm_result($match_id);
-
+    
     if ($result) {
         wp_send_json_success(['message' => esc_html__('Risultato confermato', 'eto')]);
     } else {
@@ -59,8 +62,8 @@ add_action('wp_ajax_eto_confirm_match', function() {
 // Eliminazione team
 add_action('wp_ajax_eto_delete_team', function() {
     $team_id = absint($_POST['team_id']);
-    check_ajax_referer('delete_team_' . $team_id, 'nonce');
-
+    check_ajax_referer('eto_global_nonce', 'nonce');
+    
     if (!current_user_can('delete_teams')) {
         wp_send_json_error(
             ['message' => esc_html__('Accesso negato', 'eto')],
@@ -69,7 +72,7 @@ add_action('wp_ajax_eto_delete_team', function() {
     }
 
     $result = ETO_Team::delete($team_id);
-
+    
     if ($result) {
         wp_send_json_success(['message' => esc_html__('Team eliminato', 'eto')]);
     } else {
@@ -91,7 +94,7 @@ add_action('admin_post_eto_save_settings', function() {
     // Crittografia chiave API
     $api_key = sanitize_text_field($_POST['riot_api_key']);
     update_option('eto_riot_api_key', base64_encode($api_key));
-
+    
     update_option('eto_email_enabled', isset($_POST['email_enabled']) ? 1 : 0);
 
     eto_redirect_with_message(

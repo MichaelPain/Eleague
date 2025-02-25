@@ -1,38 +1,15 @@
 <?php
+if (!defined('ABSPATH')) exit;
+
 class ETO_Emails {
-    const TEMPLATE_PATH = '/templates/emails/';
-
-    public static function send($to, $subject, $template, $data = []) {
-        try {
-            if (!is_email($to)) {
-                throw new Exception(__('Indirizzo email non valido', 'eto'));
-            }
-
-            $headers = ['Content-Type: text/html; charset=UTF-8'];
-            $body = self::get_template($template, $data);
-            $subject = sanitize_text_field($subject);
-
-            add_filter('wp_mail_content_type', function() { return 'text/html'; });
-            
-            $result = wp_mail($to, $subject, $body, $headers);
-            
-            remove_filter('wp_mail_content_type', 'set_html_content_type');
-            
-            self::log_email($to, $subject, $result ? 'sent' : 'failed');
-            
-            return $result;
-
-        } catch (Exception $e) {
-            self::log_email($to, $subject, 'error', $e->getMessage());
-            error_log('[ETO] Email Error: ' . $e->getMessage());
-            return false;
-        }
-    }
+    private static $email_headers = [
+        'Content-Type: text/html; charset=UTF-8',
+        'From: ' . sanitize_email(get_option('admin_email'))
+    ];
 
     public static function send_privilege_notification($user_id) {
         try {
             $user = get_userdata(absint($user_id));
-            
             if (!$user || !is_email($user->user_email)) {
                 throw new Exception(__('Utente o email non validi', 'eto'));
             }
@@ -47,7 +24,6 @@ class ETO_Emails {
                     'date' => date_i18n(get_option('date_format'))
                 ]
             );
-
         } catch (Exception $e) {
             error_log('[ETO] Errore notifica privilegi: ' . $e->getMessage());
             return false;
@@ -124,16 +100,20 @@ class ETO_Emails {
         foreach ($data as $key => $value) {
             $$key = is_array($value) ? array_map('esc_html', $value) : esc_html($value);
         }
+
         include $template_file;
         return ob_get_clean();
     }
 
     private static function generate_checkin_link($tournament_id) {
-        return add_query_arg([
-            'action' => 'checkin',
-            'tournament_id' => absint($tournament_id),
-            'nonce' => wp_create_nonce('eto_checkin_action')
-        ], home_url('/checkin'));
+        return add_query_arg(
+            [
+                'action' => 'checkin',
+                'tournament_id' => absint($tournament_id),
+                'nonce' => wp_create_nonce('eto_checkin_action')
+            ],
+            home_url('/checkin')
+        );
     }
 
     private static function log_email($to, $subject, $status, $error = '') {
@@ -169,5 +149,26 @@ class ETO_Emails {
             absint($tournament_id),
             home_url('/tournament-results')
         ));
+    }
+
+    private static function send($to, $subject, $template, $data) {
+        $body = self::get_template($template, $data);
+        $headers = self::$email_headers;
+
+        $sent = wp_mail(
+            sanitize_email($to),
+            sanitize_text_field($subject),
+            $body,
+            $headers
+        );
+
+        if (!$sent) {
+            $error = error_get_last();
+            self::log_email($to, $subject, 'failed', $error['message']);
+        } else {
+            self::log_email($to, $subject, 'sent');
+        }
+
+        return $sent;
     }
 }
