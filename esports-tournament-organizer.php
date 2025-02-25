@@ -76,14 +76,14 @@ function eto_verify_permissions() {
             $current = fileperms($path) & 0777;
             if ($current !== $expected) {
                 add_action('admin_notices', function() use ($path, $expected, $current) {
-                    echo '<div class="notice notice-error">';
-                    echo '<p>'.sprintf(
-                        __('Permessi directory non corretti: %s (Attuali: %o, Richiesti: %o)', 'eto'),
+                    echo '<div class="notice notice-error"><p>';
+                    printf(
+                        esc_html__('Permessi directory non corretti: %s (Attuali: %o, Richiesti: %o)', 'eto'),
                         esc_html($path),
                         $current,
                         $expected
-                    ).'</p>';
-                    echo '</div>';
+                    );
+                    echo '</p></div>';
                 });
             }
         }
@@ -94,14 +94,14 @@ function eto_verify_permissions() {
             $current = fileperms($path) & 0777;
             if ($current !== $expected) {
                 add_action('admin_notices', function() use ($path, $expected, $current) {
-                    echo '<div class="notice notice-error">';
-                    echo '<p>'.sprintf(
-                        __('Permessi file non corretti: %s (Attuali: %o, Richiesti: %o)', 'eto'),
+                    echo '<div class="notice notice-error"><p>';
+                    printf(
+                        esc_html__('Permessi file non corretti: %s (Attuali: %o, Richiesti: %o)', 'eto'),
                         esc_html($path),
                         $current,
                         $expected
-                    ).'</p>';
-                    echo '</div>';
+                    );
+                    echo '</p></div>';
                 });
             }
         }
@@ -109,7 +109,7 @@ function eto_verify_permissions() {
 }
 
 // ==================================================
-// 3. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ
+// 3. INCLUDI FILE CORE
 // ==================================================
 $core_files = [
     // Database e migrazioni
@@ -121,8 +121,8 @@ $core_files = [
     'includes/class-uninstaller.php',
     
     // Logica core
-    'includes/class-tournament.php',
-    'includes/class-team.php', 
+    'includes/class-tournament.php', 
+    'includes/class-team.php',
     'includes/class-match.php',
     'includes/class-swiss.php',
     'includes/class-emails.php',
@@ -228,6 +228,15 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
     });
 }
 
+// Aggiunta codice per avviso massimo team
+add_action('admin_notices', function() {
+    if (isset($_GET['max_teams_exceeded'])) {
+        echo '<div class="notice notice-warning"><p>';
+        esc_html_e('Avviso: Numero team superiore al massimo consentito', 'eto');
+        echo '</p></div>';
+    }
+});
+
 // ==================================================
 // 7. INTEGRAZIONE WP-CLI
 // ==================================================
@@ -254,3 +263,12 @@ if (is_multisite()) {
     require_once ETO_PLUGIN_DIR . 'includes/class-multisite.php';
     ETO_Multisite::init();
 }
+
+// ==================================================
+// 9. FILTRO REGISTRAZIONE TEAM
+// ==================================================
+add_filter('eto_can_register_team', function($can_register, $tournament_id) {
+    $tournament = ETO_Tournament::get($tournament_id);
+    $current = ETO_Team::count($tournament_id);
+    return $current < $tournament->max_teams;
+}, 10, 2);
