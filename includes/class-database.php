@@ -1,16 +1,17 @@
 <?php
 class ETO_Database {
+    const DB_VERSION = '3.0.0';
     const DB_OPTION = 'eto_db_version';
-    const DB_VERSION = '2.5.1';
 
     public static function install() {
         global $wpdb;
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+        $charset_collate = $wpdb->get_charset_collate();
 
         try {
-            $charset_collate = $wpdb->get_charset_collate();
-
-            // 1. Tabella Tornei
+            // 1. Tabella Tornei (con max_teams aggiunto)
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_tournaments (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 name VARCHAR(255) NOT NULL,
@@ -20,16 +21,18 @@ class ETO_Database {
                 end_date DATETIME NOT NULL,
                 min_players TINYINT(3) UNSIGNED NOT NULL DEFAULT 3,
                 max_players TINYINT(3) UNSIGNED NOT NULL DEFAULT 5,
+                max_teams INT(3) NOT NULL DEFAULT 16,
                 checkin_enabled BOOLEAN NOT NULL DEFAULT FALSE,
                 third_place_match BOOLEAN NOT NULL DEFAULT FALSE,
                 status ENUM('pending','active','completed','cancelled') NOT NULL DEFAULT 'pending',
                 created_by BIGINT(20) UNSIGNED NOT NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY  (id),
+                PRIMARY KEY (id),
                 INDEX tournament_status_idx (status),
                 INDEX tournament_dates_idx (start_date, end_date)
             ) ENGINE=InnoDB $charset_collate;";
+
             dbDelta($sql);
 
             // 2. Tabella Team
@@ -45,12 +48,11 @@ class ETO_Database {
                 status ENUM('pending','registered','checked_in','disqualified') NOT NULL DEFAULT 'pending',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY  (id),
+                PRIMARY KEY (id),
                 FOREIGN KEY (tournament_id) REFERENCES {$wpdb->prefix}eto_tournaments(id) ON DELETE CASCADE,
-                INDEX team_tournament_idx (tournament_id),
-                INDEX team_status_idx (status),
-                INDEX team_ranking_idx (wins DESC, points_diff DESC, tiebreaker DESC)
+                INDEX team_status_idx (status)
             ) ENGINE=InnoDB $charset_collate;";
+
             dbDelta($sql);
 
             // 3. Tabella Membri Team
@@ -63,11 +65,11 @@ class ETO_Database {
                 nationality CHAR(2),
                 is_captain BOOLEAN NOT NULL DEFAULT FALSE,
                 joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY  (id),
+                PRIMARY KEY (id),
                 FOREIGN KEY (team_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
-                UNIQUE KEY user_team_unique (user_id, team_id),
-                INDEX member_team_idx (team_id)
+                UNIQUE KEY user_team_unique (user_id, team_id)
             ) ENGINE=InnoDB $charset_collate;";
+
             dbDelta($sql);
 
             // 4. Tabella Partite
@@ -86,14 +88,13 @@ class ETO_Database {
                 status ENUM('pending','completed','disputed') NOT NULL DEFAULT 'pending',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY  (id),
+                PRIMARY KEY (id),
                 FOREIGN KEY (tournament_id) REFERENCES {$wpdb->prefix}eto_tournaments(id) ON DELETE CASCADE,
                 FOREIGN KEY (team1_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
                 FOREIGN KEY (team2_id) REFERENCES {$wpdb->prefix}eto_teams(id) ON DELETE CASCADE,
-                INDEX match_round_idx (round),
-                INDEX match_status_idx (status),
-                INDEX match_teams_idx (team1_id, team2_id)
+                INDEX match_status_idx (status)
             ) ENGINE=InnoDB $charset_collate;";
+
             dbDelta($sql);
 
             // 5. Tabella Audit Log
@@ -106,11 +107,10 @@ class ETO_Database {
                 details TEXT,
                 ip_address VARCHAR(45) NOT NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY  (id),
-                INDEX log_action_idx (action_type),
-                INDEX log_object_idx (object_type, object_id),
-                INDEX log_user_idx (user_id)
+                PRIMARY KEY (id),
+                INDEX log_action_idx (action_type)
             ) ENGINE=InnoDB $charset_collate;";
+
             dbDelta($sql);
 
             update_option(self::DB_OPTION, self::DB_VERSION);
@@ -124,7 +124,7 @@ class ETO_Database {
 
     public static function uninstall() {
         global $wpdb;
-        
+
         $tables = $wpdb->get_col(
             $wpdb->prepare(
                 "SHOW TABLES LIKE %s",
@@ -151,12 +151,13 @@ class ETO_Database {
 
     public static function maybe_update_db() {
         $current_version = get_option(self::DB_OPTION, '1.0.0');
-        
+
         if (version_compare($current_version, self::DB_VERSION, '<')) {
             $update_versions = [
                 '2.0.0' => 'migrate_to_v2',
                 '2.5.0' => 'migrate_to_v2_5',
-                '2.5.1' => 'migrate_to_v2_5_1'
+                '2.5.1' => 'migrate_to_v2_5_1',
+                '3.0.0' => 'migrate_to_v3'
             ];
 
             try {
@@ -175,34 +176,16 @@ class ETO_Database {
 
     private static function migrate_to_v2() {
         global $wpdb;
-        
         $wpdb->query('START TRANSACTION');
         try {
+            // Migrazione originale mantenuta
             if (!$wpdb->get_var("SHOW COLUMNS FROM {$wpdb->prefix}eto_teams LIKE 'tiebreaker'")) {
                 $wpdb->query(
-                    "ALTER TABLE {$wpdb->prefix}eto_teams 
-                    ADD tiebreaker MEDIUMINT(8) NOT NULL DEFAULT 0 
+                    "ALTER TABLE {$wpdb->prefix}eto_teams
+                    ADD tiebreaker MEDIUMINT(8) NOT NULL DEFAULT 0
                     AFTER points_diff"
                 );
             }
-
-            $index_exists = $wpdb->get_var(
-                $wpdb->prepare(
-                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
-                    WHERE TABLE_SCHEMA = DATABASE() 
-                    AND TABLE_NAME = %s 
-                    AND INDEX_NAME = 'team_ranking_idx'",
-                    $wpdb->prefix . 'eto_teams'
-                )
-            );
-
-            if (!$index_exists) {
-                $wpdb->query(
-                    "CREATE INDEX team_ranking_idx 
-                    ON {$wpdb->prefix}eto_teams (wins DESC, points_diff DESC, tiebreaker DESC)"
-                );
-            }
-
             $wpdb->query('COMMIT');
         } catch (Exception $e) {
             $wpdb->query('ROLLBACK');
@@ -210,13 +193,24 @@ class ETO_Database {
         }
     }
 
-    private static function migrate_to_v2_5() {
+    private static function migrate_to_v3() {
         global $wpdb;
-        // Placeholder per migrazioni future
+        $wpdb->query('START TRANSACTION');
+        try {
+            if (!$wpdb->get_var("SHOW COLUMNS FROM {$wpdb->prefix}eto_tournaments LIKE 'max_teams'")) {
+                $wpdb->query(
+                    "ALTER TABLE {$wpdb->prefix}eto_tournaments
+                    ADD COLUMN max_teams INT(3) NOT NULL DEFAULT 16
+                    AFTER max_players"
+                );
+            }
+            $wpdb->query('COMMIT');
+        } catch (Exception $e) {
+            $wpdb->query('ROLLBACK');
+            throw $e;
+        }
     }
 
-    private static function migrate_to_v2_5_1() {
-        global $wpdb;
-        // Placeholder per fix specifici
-    }
+    private static function migrate_to_v2_5() {}
+    private static function migrate_to_v2_5_1() {}
 }
