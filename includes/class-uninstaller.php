@@ -19,11 +19,14 @@ class ETO_Uninstaller {
         // 1. Disabilita i vincoli di foreign key
         $wpdb->query('SET FOREIGN_KEY_CHECKS = 0');
 
-        // 2. Rimozione tabelle in ordine corretto
+        // 2. Rimozione tabelle in ordine inverso alle dipendenze
         foreach (self::CLEANUP_TABLES as $table) {
             $table_name = $wpdb->prefix . $table;
-            if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) === $table_name) {
-                $wpdb->query("DROP TABLE IF EXISTS `$table_name`");
+            if ($wpdb->get_var($wpdb->prepare(
+                "SHOW TABLES LIKE %s", 
+                $wpdb->esc_like($table_name)
+            )) === $table_name) {
+                $wpdb->query($wpdb->prepare("DROP TABLE IF EXISTS %i", $table_name));
             }
         }
 
@@ -50,12 +53,10 @@ class ETO_Uninstaller {
         }
 
         // 6. Pulizia transients
-        $wpdb->query(
-            $wpdb->prepare(
-                "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
-                '_transient_eto_%'
-            )
-        );
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+            $wpdb->esc_like('_transient_eto_') . '%'
+        ));
     }
 
     // Metodo per la disinstallazione via WP-CLI
