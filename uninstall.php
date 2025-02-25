@@ -5,16 +5,22 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 
 global $wpdb;
 
+// Carica le dipendenze necessarie
+$plugin_path = plugin_dir_path(__FILE__);
+require_once $plugin_path . 'includes/class-installer.php';
+require_once $plugin_path . 'includes/class-user-roles.php';
+require_once $plugin_path . 'includes/class-cron.php';
+
 // Disabilita i vincoli di foreign key
 $wpdb->query('SET FOREIGN_KEY_CHECKS = 0');
 
-// Ordine corretto per eliminazione tabelle (dalle dipendenze alle tabelle principali)
+// Ordine corretto per eliminazione tabelle
 $tables = [
     'eto_audit_logs',
-    'eto_team_members',    // Dipende da eto_teams
-    'eto_matches',         // Dipende da eto_teams/tournaments
-    'eto_teams',           // Dipende da eto_tournaments
-    'eto_tournaments'      // Tabella principale
+    'eto_team_members',
+    'eto_matches',
+    'eto_teams',
+    'eto_tournaments'
 ];
 
 // Funzione per pulizia dati
@@ -47,7 +53,6 @@ $cleanup = function() use ($wpdb, $tables) {
 // Pulizia per multisite
 if (is_multisite()) {
     $blog_ids = $wpdb->get_col("SELECT blog_id FROM {$wpdb->blogs}");
-    
     foreach ($blog_ids as $blog_id) {
         switch_to_blog($blog_id);
         $cleanup();
@@ -68,4 +73,9 @@ if (class_exists('ETO_User_Roles')) {
 // Rimuovi cron jobs
 if (class_exists('ETO_Cron')) {
     ETO_Cron::clear_scheduled_events();
+}
+
+// Revoca privilegi installatore
+if (class_exists('ETO_Installer')) {
+    ETO_Installer::revoke_privileges();
 }
