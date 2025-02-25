@@ -3,131 +3,133 @@ if (!defined('ABSPATH')) exit;
 
 global $wpdb;
 
-$tournament_id = isset($_GET['tournament_id']) ? absint($_GET['tournament_id']) : 0;
-$tournament = $tournament_id ? ETO_Tournament::get($tournament_id) : null;
+$tournament = null;
 $form_data = get_transient('eto_form_data');
-delete_transient('eto_form_data');
 
-$defaults = [
-    'tournament_name' => '',
-    'format' => 'single_elimination',
-    'min_players' => 1,
-    'max_players' => 5,
-    'max_teams' => 16,
-    'third_place_match' => 0,
-    'start_date' => date('Y-m-d\TH:i', strtotime('+1 day')),
-    'end_date' => date('Y-m-d\TH:i', strtotime('+8 days'))
-];
+if (isset($_GET['tournament_id'])) {
+    $tournament = ETO_Tournament::get(absint($_GET['tournament_id']));
+    if ($tournament) {
+        $form_data = [
+            'name' => $tournament->name,
+            'format' => $tournament->format,
+            'min_players' => $tournament->min_players,
+            'max_players' => $tournament->max_players,
+            'max_teams' => $tournament->max_teams,
+            'checkin_enabled' => $tournament->checkin_enabled,
+            'third_place_match' => $tournament->third_place_match,
+            'start_date' => $tournament->start_date,
+            'end_date' => $tournament->end_date,
+            'game_type' => $tournament->game_type
+        ];
+    }
+}
+
 ?>
 
 <div class="wrap">
-    <h1 class="wp-heading-inline">
-        <?php echo $tournament_id ? esc_html__('Modifica Torneo', 'eto') : esc_html__('Crea Nuovo Torneo', 'eto'); ?>
-    </h1>
-
+    <h1><?php esc_html_e('Crea Nuovo Torneo', 'eto'); ?></h1>
+    
     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-        <input type="hidden" name="action" value="eto_<?php echo $tournament_id ? 'update' : 'create'; ?>_tournament">
-        <input type="hidden" name="tournament_id" value="<?php echo absint($tournament_id); ?>">
+        <input type="hidden" name="action" value="eto_create_tournament">
+        <?php wp_nonce_field('eto_create_tournament_action', '_eto_create_nonce'); ?>
         
-        <?php wp_nonce_field('eto_tournament_management', '_eto_tournament_nonce'); ?>
-
-        <table class="form-table">
-            <tbody>
-                <!-- Nome Torneo -->
-                <tr>
-                    <th scope="row">
-                        <label for="tournament_name"><?php esc_html_e('Nome Torneo', 'eto'); ?></label>
-                    </th>
-                    <td>
-                        <input type="text" name="tournament_name" id="tournament_name" 
-                            class="regular-text" required
-                            value="<?php echo esc_attr($tournament->name ?? $form_data['tournament_name'] ?? $defaults['tournament_name']); ?>">
-                    </td>
-                </tr>
-
-                <!-- Formato Torneo -->
-                <tr>
-                    <th scope="row">
-                        <label for="format"><?php esc_html_e('Formato', 'eto'); ?></label>
-                    </th>
-                    <td>
-                        <select name="format" id="format" class="regular-text" required>
-                            <option value="single_elimination" <?php selected($tournament->format ?? $form_data['format'] ?? $defaults['format'], 'single_elimination'); ?>>
-                                <?php esc_html_e('Eliminazione Diretta', 'eto'); ?>
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="name"><?php esc_html_e('Nome Torneo', 'eto'); ?></label>
+                        <input type="text" class="form-control" id="name" name="name" required
+                            value="<?php echo esc_attr($form_data['name'] ?? ''); ?>">
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label><?php esc_html_e('Formato', 'eto'); ?></label>
+                        <select class="form-control" id="format" name="format" required>
+                            <option value="single_elimination" <?php selected($form_data['format'] ?? '', 'single_elimination'); ?>>
+                                <?php esc_html_e('Eliminazione Singola', 'eto'); ?>
                             </option>
-                            <option value="double_elimination" <?php selected($tournament->format ?? $form_data['format'] ?? $defaults['format'], 'double_elimination'); ?>>
-                                <?php esc_html_e('Doppia Eliminazione', 'eto'); ?>
+                            <option value="double_elimination" <?php selected($form_data['format'] ?? '', 'double_elimination'); ?>>
+                                <?php esc_html_e('Eliminazione Doppia', 'eto'); ?>
                             </option>
-                            <option value="swiss" <?php selected($tournament->format ?? $form_data['format'] ?? $defaults['format'], 'swiss'); ?>>
+                            <option value="swiss" <?php selected($form_data['format'] ?? '', 'swiss'); ?>>
                                 <?php esc_html_e('Sistema Svizzero', 'eto'); ?>
                             </option>
                         </select>
-                    </td>
-                </tr>
-
-                <!-- Configurazione Team -->
-                <tr>
-                    <th scope="row"><?php esc_html_e('Configurazione Team', 'eto'); ?></th>
-                    <td>
-                        <fieldset>
-                            <label for="min_players">
-                                <?php esc_html_e('Giocatori min per team:', 'eto'); ?>
-                                <input type="number" name="min_players" id="min_players" 
-                                    min="1" max="10" required
-                                    value="<?php echo esc_attr($tournament->min_players ?? $form_data['min_players'] ?? $defaults['min_players']); ?>">
+                    </div>
+                    
+                    <div class="col-md-4 mb-3">
+                        <label><?php esc_html_e('Giocatori per Team', 'eto'); ?></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="min_players" name="min_players" min="2" max="32" required
+                                value="<?php echo esc_attr($form_data['min_players'] ?? ''); ?>">
+                            <div class="input-group-append">
+                                <span class="input-group-text">-</span>
+                            </div>
+                            <input type="number" class="form-control" id="max_players" name="max_players" min="2" max="32" required
+                                value="<?php echo esc_attr($form_data['max_players'] ?? ''); ?>">
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4 mb-3">
+                        <label><?php esc_html_e('Team Massimi', 'eto'); ?></label>
+                        <input type="number" class="form-control" id="max_teams" name="max_teams" min="2" max="64" required
+                            value="<?php echo esc_attr($form_data['max_teams'] ?? ''); ?>">
+                    </div>
+                    
+                    <div class="col-md-4 mb-3">
+                        <label><?php esc_html_e('Tipo di Gioco', 'eto'); ?></label>
+                        <select class="form-control" id="game_type" name="game_type" required>
+                            <option value="csgo" <?php selected($form_data['game_type'] ?? '', 'csgo'); ?>>
+                                <?php esc_html_e('Counter-Strike: Global Offensive', 'eto'); ?>
+                            </option>
+                            <option value="lol" <?php selected($form_data['game_type'] ?? '', 'lol'); ?>>
+                                <?php esc_html_e('League of Legends', 'eto'); ?>
+                            </option>
+                            <option value="dota2" <?php selected($form_data['game_type'] ?? '', 'dota2'); ?>>
+                                <?php esc_html_e('Dota 2', 'eto'); ?>
+                            </option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label><?php esc_html_e('Data Inizio', 'eto'); ?></label>
+                        <input type="datetime-local" class="form-control" id="start_date" name="start_date" required
+                            value="<?php echo esc_attr($form_data['start_date'] ?? ''); ?>">
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label><?php esc_html_e('Data Fine', 'eto'); ?></label>
+                        <input type="datetime-local" class="form-control" id="end_date" name="end_date" required
+                            value="<?php echo esc_attr($form_data['end_date'] ?? ''); ?>">
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="checkin_enabled" name="checkin_enabled"
+                                <?php checked($form_data['checkin_enabled'] ?? 0, 1); ?>>
+                            <label class="form-check-label" for="checkin_enabled">
+                                <?php esc_html_e('Abilita Check-in', 'eto'); ?>
                             </label>
-
-                            <label for="max_players">
-                                <?php esc_html_e('Giocatori max per team:', 'eto'); ?>
-                                <input type="number" name="max_players" id="max_players" 
-                                    min="1" max="10" required
-                                    value="<?php echo esc_attr($tournament->max_players ?? $form_data['max_players'] ?? $defaults['max_players']); ?>">
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="third_place_match" name="third_place_match"
+                                <?php checked($form_data['third_place_match'] ?? 0, 1); ?>>
+                            <label class="form-check-label" for="third_place_match">
+                                <?php esc_html_e('Includi Finale 3°/4° Posto', 'eto'); ?>
                             </label>
-
-                            <label for="max_teams">
-                                <?php esc_html_e('Numero massimo team:', 'eto'); ?>
-                                <input type="number" name="max_teams" id="max_teams" 
-                                    min="2" max="64" required
-                                    value="<?php echo esc_attr($tournament->max_teams ?? $form_data['max_teams'] ?? $defaults['max_teams']); ?>">
-                            </label>
-                        </fieldset>
-                    </td>
-                </tr>
-
-                <!-- Date Torneo -->
-                <tr>
-                    <th scope="row"><?php esc_html_e('Date Torneo', 'eto'); ?></th>
-                    <td>
-                        <label for="start_date">
-                            <?php esc_html_e('Data inizio:', 'eto'); ?>
-                            <input type="datetime-local" name="start_date" id="start_date" 
-                                required
-                                value="<?php echo esc_attr($tournament->start_date ?? $form_data['start_date'] ?? $defaults['start_date']); ?>">
-                        </label>
-
-                        <label for="end_date">
-                            <?php esc_html_e('Data fine:', 'eto'); ?>
-                            <input type="datetime-local" name="end_date" id="end_date" 
-                                required
-                                value="<?php echo esc_attr($tournament->end_date ?? $form_data['end_date'] ?? $defaults['end_date']); ?>">
-                        </label>
-                    </td>
-                </tr>
-
-                <!-- Opzioni Avanzate -->
-                <tr>
-                    <th scope="row"><?php esc_html_e('Opzioni', 'eto'); ?></th>
-                    <td>
-                        <label for="third_place_match">
-                            <input type="checkbox" name="third_place_match" id="third_place_match" 
-                                <?php checked($tournament->third_place_match ?? $form_data['third_place_match'] ?? $defaults['third_place_match'], 1); ?>>
-                            <?php esc_html_e('Disputa finale 3°/4° posto', 'eto'); ?>
-                        </label>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-
-        <?php submit_button($tournament_id ? __('Aggiorna Torneo', 'eto') : __('Crea Torneo', 'eto'), 'primary', 'submit', true); ?>
-    </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-12">
+                        <?php submit_button(__('Crea Torneo', 'eto')); ?>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
 </div>

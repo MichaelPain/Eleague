@@ -109,35 +109,26 @@ function eto_verify_permissions() {
 }
 
 // ==================================================
-// 3. INCLUDI FILE CORE
+// 3. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ
 // ==================================================
 $core_files = [
-    // Database e migrazioni
     'includes/class-database.php',
     'includes/class-user-roles.php',
     'includes/class-installer.php',
     'includes/class-activator.php',
     'includes/class-deactivator.php',
     'includes/class-uninstaller.php',
-    
-    // Logica core
-    'includes/class-tournament.php', 
-    'includes/class-team.php',
+    'includes/class-tournament.php',
+    'includes/class-team.php', 
     'includes/class-match.php',
     'includes/class-swiss.php',
     'includes/class-emails.php',
     'includes/class-shortcodes.php',
-    
-    // Sistema
     'includes/class-cron.php',
     'includes/class-audit-log.php',
     'includes/class-ajax-handler.php',
-    
-    // Frontend
     'public/shortcodes.php',
     'public/class-checkin.php',
-    
-    // Admin
     'admin/admin-pages.php',
     'admin/class-settings-register.php'
 ];
@@ -162,7 +153,7 @@ foreach ($core_files as $file) {
 }
 
 // ==================================================
-// 4. REGISTRAZIONE HOOK PRINCIPALI
+// 4. REGISTRAZIONE HOOK PRINCIPALI (MODIFICATO)
 // ==================================================
 register_activation_hook(__FILE__, function() {
     try {
@@ -178,6 +169,12 @@ register_activation_hook(__FILE__, function() {
             '<p>' . esc_html__('Controlla il log errori per maggiori dettagli.', 'eto') . '</p>'
         );
     }
+});
+
+// HOOK CORRETTO PER LA CREAZIONE TORNEI
+add_action('admin_post_eto_create_tournament', ['ETO_Tournament', 'handle_tournament_creation']);
+add_action('admin_post_nopriv_eto_create_tournament', function() {
+    wp_die(__('Accesso non autorizzato', 'eto'), 403);
 });
 
 register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
@@ -228,47 +225,13 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
     });
 }
 
-// Aggiunta codice per avviso massimo team
+// ==================================================
+// 7. GESTIONE NOTIFICHE PERSONALIZZATE
+// ==================================================
 add_action('admin_notices', function() {
     if (isset($_GET['max_teams_exceeded'])) {
-        echo '<div class="notice notice-warning"><p>';
-        esc_html_e('Avviso: Numero team superiore al massimo consentito', 'eto');
+        echo '<div class="notice notice-warning is-dismissible"><p>';
+        esc_html_e('Avviso: Numero team superiore al massimo consentito!', 'eto');
         echo '</p></div>';
     }
 });
-
-// ==================================================
-// 7. INTEGRAZIONE WP-CLI
-// ==================================================
-if (defined('WP_CLI') && WP_CLI) {
-    WP_CLI::add_command('eto permissions', function($args) {
-        $script_path = ETO_PLUGIN_DIR . 'bin/set-permissions.sh';
-        if (file_exists($script_path)) {
-            system("bash {$script_path}", $return_val);
-            if ($return_val === 0) {
-                WP_CLI::success('Permessi configurati correttamente');
-            } else {
-                WP_CLI::error('Errore durante l\'esecuzione dello script');
-            }
-        } else {
-            WP_CLI::error('Script per i permessi non trovato');
-        }
-    });
-}
-
-// ==================================================
-// 8. SUPPORTO MULTISITO
-// ==================================================
-if (is_multisite()) {
-    require_once ETO_PLUGIN_DIR . 'includes/class-multisite.php';
-    ETO_Multisite::init();
-}
-
-// ==================================================
-// 9. FILTRO REGISTRAZIONE TEAM
-// ==================================================
-add_filter('eto_can_register_team', function($can_register, $tournament_id) {
-    $tournament = ETO_Tournament::get($tournament_id);
-    $current = ETO_Team::count($tournament_id);
-    return $current < $tournament->max_teams;
-}, 10, 2);
