@@ -269,7 +269,7 @@ private static function generate_double_elimination_bracket($team_ids, $max_team
     $total_rounds = log($max_teams, 2);
     $winners_bracket = self::generate_single_elimination_bracket($team_ids, $max_teams);
     $losers_bracket = [];
-    $losers_pool = [];
+
 
     // Distribuzione dei perdenti del winners bracket nel losers bracket
     for ($round = 1; $round < $total_rounds; $round++) {
