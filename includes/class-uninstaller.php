@@ -1,27 +1,36 @@
 <?php
 class ETO_Uninstaller {
     const DB_OPTION = 'eto_db_version';
+    const CLEANUP_TABLES = [
+        'eto_audit_logs',
+        'eto_team_members',
+        'eto_matches',
+        'eto_teams',
+        'eto_tournaments'
+    ];
 
     public static function handle_uninstall() {
         global $wpdb;
 
-        // 1. Revoca privilegi installatore
-        ETO_Installer::revoke_privileges();
-
-        // 2. Rimozione tabelle del plugin
-        $tables = [
-            'eto_tournaments',
-            'eto_teams',
-            'eto_team_members',
-            'eto_matches',
-            'eto_audit_logs'
-        ];
-
-        foreach ($tables as $table) {
-            $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}{$table}");
+        if (!defined('WP_UNINSTALL_PLUGIN')) {
+            return;
         }
 
-        // 3. Rimozione opzioni
+        // 1. Disabilita i vincoli di foreign key
+        $wpdb->query('SET FOREIGN_KEY_CHECKS = 0');
+
+        // 2. Rimozione tabelle in ordine corretto
+        foreach (self::CLEANUP_TABLES as $table) {
+            $table_name = $wpdb->prefix . $table;
+            if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) === $table_name) {
+                $wpdb->query("DROP TABLE IF EXISTS `$table_name`");
+            }
+        }
+
+        // 3. Riabilita i vincoli
+        $wpdb->query('SET FOREIGN_KEY_CHECKS = 1');
+
+        // 4. Rimozione opzioni
         $options = [
             self::DB_OPTION,
             'eto_riot_api_key',
@@ -35,11 +44,18 @@ class ETO_Uninstaller {
             delete_site_option($option);
         }
 
-        // 4. Rimozione ruoli e capability
-        ETO_User_Roles::remove_roles();
+        // 5. Rimozione ruoli e capability
+        if (class_exists('ETO_User_Roles')) {
+            ETO_User_Roles::remove_roles();
+        }
 
-        // 5. Pulizia transients
-        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_eto_%'");
+        // 6. Pulizia transients
+        $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+                '_transient_eto_%'
+            )
+        );
     }
 
     // Metodo per la disinstallazione via WP-CLI
