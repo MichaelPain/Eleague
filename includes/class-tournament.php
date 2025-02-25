@@ -1,7 +1,7 @@
 <?php
 class ETO_Tournament {
     const MIN_PLAYERS = 2;
-    const MAX_PLAYERS = 32;
+    const MAX_PLAYERS = 64;
     const FORMAT_SINGLE_ELIMINATION = 'single_elimination';
     const FORMAT_DOUBLE_ELIMINATION = 'double_elimination';
     const FORMAT_SWISS = 'swiss';
@@ -105,14 +105,18 @@ class ETO_Tournament {
     }
 
     public static function handle_tournament_creation() {
-        if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'eto_create_tournament_nonce')) {
-            wp_die(__('Verifica di sicurezza fallita', 'eto'));
+        // Verifica nonce corretto
+        if (!isset($_POST['_eto_tournament_nonce']) || 
+            !wp_verify_nonce($_POST['_eto_tournament_nonce'], 'eto_tournament_management')) {
+            wp_die(__('Verifica di sicurezza fallita. Ricarica la pagina e riprova.', 'eto'));
         }
 
+        // Verifica permessi
         if (!current_user_can('manage_eto_tournaments')) {
             wp_die(__('Permessi insufficienti', 'eto'));
         }
 
+        // Elaborazione dati
         $data = [
             'name' => sanitize_text_field($_POST['tournament_name']),
             'format' => sanitize_key($_POST['format']),
