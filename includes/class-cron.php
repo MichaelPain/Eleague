@@ -20,6 +20,12 @@ class ETO_Cron {
         }
     }
 
+    public static function clear_scheduled_events() {
+        wp_clear_scheduled_hook('eto_hourly_tasks');
+        wp_clear_scheduled_hook('eto_daily_cleanup');
+        wp_clear_scheduled_hook('eto_daily_maintenance');
+    }
+
     public static function hourly_tasks() {
         global $wpdb;
         

@@ -15,6 +15,8 @@
 
 defined('ABSPATH') || exit;
 
+error_log('[ETO] Plugin loaded successfully. Included files: ' . print_r($core_files, true));
+
 // ==================================================
 // 1. DEFINIZIONE COSTANTI E PERCORSI (Aggiornata)
 // ==================================================
@@ -22,7 +24,8 @@ define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ETO_DB_VERSION', '3.2.1');
 define('ETO_TEMPLATE_DIR', ETO_PLUGIN_DIR . 'templates/');
-define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log');
+if (!defined('ETO_DEBUG_LOG')) {
+    define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log'); 
 
 // ==================================================
 // 2. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ (Migliorata)
@@ -30,6 +33,7 @@ define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log');
 $core_files = [
     // Database e migrazioni
     'includes/class-activator.php',
+    'includes/class-cron.php',
     'includes/class-deactivator.php',
     'includes/class-uninstaller.php',
     'includes/class-database.php',
@@ -45,7 +49,6 @@ $core_files = [
     'includes/class-riot-api.php',
 
     // Sistema
-    'includes/class-cron.php',
     'includes/class-audit-log.php',
     'includes/class-ajax-handler.php',
     'includes/class-shortcodes.php',
