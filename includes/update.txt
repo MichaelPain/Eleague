@@ -1,0 +1,98 @@
+📁 Struttura Generale del Plugin
+File/Cartella	Stato	Note
+/admin	✅	Struttura corretta per le funzionalità admin
+/includes	✅	Logica core ben organizzata
+/public	⚠️	Manca gestione degli shortcode complessi
+/templates	❌	Cartella mancante (necessaria per i template personalizzati)
+/languages	❌	File .pot mancanti (mancanza di supporto i18n)
+
+📄 File Principali
+1. `esports-tournament-organizer.php (Core)
+Verifiche:
+✅ Definizione costanti corretta
+✅ Hook di attivazione/disinstallazione registrati
+❌ Manca il caricamento delle traduzioni (load_plugin_textdomain())
+⚠️ Ordine inclusione file non ottimizzato (mancano dipendenze critiche)
+
+2. `includes/class-database.php (Database)
+Verifiche SQL:
+✅ Sintassi dbDelta() corretta
+✅ Chiavi esterne ben definite
+❌ Manca ENGINE=InnoDB in alcune tabelle
+⚠️ Migrazioni non gestite per tutte le versioni (solo v2.0.0)
+
+3. `includes/class-tournament.php (Tornei)
+Criticità:
+✅ Transazioni SQL ben implementate
+✅ Validazione input efficace
+❌ Manca sanitizzazione del campo game_type
+⚠️ Nessun controllo esistenza torneo in update_status()
+
+4. `includes/class-team.php (Team)
+Problemi Rilevati:
+✅ Controllo limiti membri funzionale
+❌ Vulnerabilità SQL in is_user_in_tournament() (manca $wpdb->prepare())
+⚠️ Manca sanitizzazione di nationality (dovrebbe essere VARCHAR(2))
+
+5. `includes/class-match.php (Partite)
+Sicurezza:
+✅ Gestione screenshot con controlli MIME
+❌ dispute_reason non sanitizzato con sanitize_textarea_field()
+⚠️ Manca nonce verification in record_result()
+
+6. `includes/class-swiss.php (Sistema Svizzero)
+Algoritmo:
+✅ Generazione round iniziale corretta
+❌ generate_next_round() non gestisce correttamente i rematch
+⚠️ Manca controllo su numero massimo round (rischio loop infinito)
+
+🔍 Analisi di Sicurezza
+Componente	Risultato
+SQL Injection	❌ 5 vulnerabilità (mancanza di $wpdb->prepare() in query dinamiche)
+XSS	✅ Dati output escaped correttamente
+CSRF	❌ Manca nonce check in metodi AJAX
+File Upload	⚠️ Manca controllo sull'estensione reale dei file
+
+🚨 Componenti Mancanti o Incompleti
+Classe Emails (class-emails.php):
+❌ Non implementata (manca gestione notifiche)
+Integrazione API Riot (class-riot-api.php):
+⚠️ Chiave API hardcoded (deve usare get_option())
+
+Widget Leaderboard (class-widget-leaderboard.php):
+❌ Non presente nella repository
+
+Cron Jobs (class-cron.php):
+⚠️ Manca gestione degli eventi pianificati
+✅ Raccomandazioni Prioritarie
+
+Sicurezza:
+Aggiungere $wpdb->prepare() a tutte le query SQL dinamiche
+Implementare nonce check in tutte le funzioni AJAX
+Sanitizzare l'input utente in game_type e nationality
+
+Prestazioni:
+Aggiungere indici mancanti sulle colonne ricercate frequentemente
+Implementare caching per le query dei tornei attivi
+
+Funzionalità:
+Completare la classe Emails per le notifiche automatiche
+Aggiungere template per le pagine front-end (mancano in repository)
+Implementare sistema di migrazione completo per aggiornamenti DB
+
+📋 Report Finale per File
+File	Stato	Note
+esports-tournament-organizer.php	⚠️	Correggere ordine inclusioni e traduzioni
+includes/class-database.php	❌	Aggiungere ENGINE=InnoDB e migrazioni
+includes/class-tournament.php	⚠️	Sanitizzare game_type, aggiungere controlli esistenza
+includes/class-team.php	❌	Fix SQL injection in is_user_in_tournament()
+includes/class-match.php	❌	Aggiungere sanitizzazione dispute_reason e nonce check
+includes/class-swiss.php	⚠️	Gestire rematch e limitare round massimi
+admin/admin-pages.php	⚠️	Aggiungere controlli capacità utente in ogni pagina
+public/shortcodes.php	❌	Implementare sanitizzazione output negli shortcode
+
+🔧 Passi Successivi Consigliati
+Correggere tutte le vulnerabilità SQL e XSS entro 24h
+Implementare sistema di migrazione del database versionato
+Aggiungere test unitari per le funzioni core
+Completare i file mancanti (templates, widgets, emails)
