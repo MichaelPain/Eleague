@@ -6,11 +6,11 @@ class ETO_Database {
     public static function install() {
         global $wpdb;
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        
+
         try {
             $charset_collate = $wpdb->get_charset_collate();
 
-            // 1. Tabella Tornei (Aggiornata con ENGINE=InnoDB)
+            // 1. Tabella Tornei
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_tournaments (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 name VARCHAR(255) NOT NULL,
@@ -32,7 +32,7 @@ class ETO_Database {
             ) ENGINE=InnoDB $charset_collate;";
             dbDelta($sql);
 
-            // 2. Tabella Team (Ottimizzata)
+            // 2. Tabella Team
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_teams (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 tournament_id BIGINT(20) UNSIGNED NOT NULL,
@@ -53,7 +53,7 @@ class ETO_Database {
             ) ENGINE=InnoDB $charset_collate;";
             dbDelta($sql);
 
-            // 3. Tabella Membri Team (Migliorata)
+            // 3. Tabella Membri Team
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_team_members (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 team_id BIGINT(20) UNSIGNED NOT NULL,
@@ -70,7 +70,7 @@ class ETO_Database {
             ) ENGINE=InnoDB $charset_collate;";
             dbDelta($sql);
 
-            // 4. Tabella Partite (Aggiornata)
+            // 4. Tabella Partite
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_matches (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 tournament_id BIGINT(20) UNSIGNED NOT NULL,
@@ -96,7 +96,7 @@ class ETO_Database {
             ) ENGINE=InnoDB $charset_collate;";
             dbDelta($sql);
 
-            // 5. Tabella Audit Log (Corretta)
+            // 5. Tabella Audit Log
             $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_audit_logs (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 user_id BIGINT(20) UNSIGNED NOT NULL,
@@ -125,7 +125,6 @@ class ETO_Database {
     public static function uninstall() {
         global $wpdb;
         
-        // Rimozione migliorata con verifica esistenza tabelle
         $tables = $wpdb->get_col(
             $wpdb->prepare(
                 "SHOW TABLES LIKE %s",
@@ -134,10 +133,9 @@ class ETO_Database {
         );
 
         foreach ($tables as $table) {
-            $wpdb->query("DROP TABLE IF EXISTS {$table}");
+            $wpdb->query($wpdb->prepare("DROP TABLE IF EXISTS %s", $table));
         }
 
-        // Pulizia opzioni
         $options = [
             self::DB_OPTION,
             'eto_riot_api_key',
@@ -180,7 +178,6 @@ class ETO_Database {
         
         $wpdb->query('START TRANSACTION');
         try {
-            // Aggiungi colonna tiebreaker
             if (!$wpdb->get_var("SHOW COLUMNS FROM {$wpdb->prefix}eto_teams LIKE 'tiebreaker'")) {
                 $wpdb->query(
                     "ALTER TABLE {$wpdb->prefix}eto_teams 
@@ -189,7 +186,6 @@ class ETO_Database {
                 );
             }
 
-            // Crea indice ranking
             $index_exists = $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
@@ -216,12 +212,11 @@ class ETO_Database {
 
     private static function migrate_to_v2_5() {
         global $wpdb;
-        // Nuove migrazioni per versione 2.5
-        // Esempio: Aggiungi nuovo campo o modifica struttura
+        // Placeholder per migrazioni future
     }
 
     private static function migrate_to_v2_5_1() {
         global $wpdb;
-        // Migrazioni per fix specifici della versione
+        // Placeholder per fix specifici
     }
 }

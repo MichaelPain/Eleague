@@ -1,49 +1,37 @@
 <?php
+defined('ABSPATH') || exit;
+
+// Carica la classe Ajax Handler
+require_once ETO_PLUGIN_DIR . 'includes/class-ajax-handler.php';
+
 // Registra script e stili per il frontend
 function eto_enqueue_public_assets() {
     // CSS Frontend
     wp_enqueue_style(
         'eto-public',
-        plugins_url('assets/css/frontend.css', ETO_PLUGIN_DIR),
+        plugins_url('assets/css/public.css', ETO_PLUGIN_DIR),
         array(),
-        filemtime(ETO_PLUGIN_DIR . 'assets/css/frontend.css')
+        filemtime(ETO_PLUGIN_DIR . 'assets/css/public.css')
     );
 
-    // JS Frontend principale
-    wp_enqueue_script(
+    // JS Frontend
+    wp_register_script(
         'eto-public',
-        plugins_url('assets/js/tournament-public.js', ETO_PLUGIN_DIR),
+        plugins_url('assets/js/public.js', ETO_PLUGIN_DIR),
         array('jquery'),
-        filemtime(ETO_PLUGIN_DIR . 'assets/js/tournament-public.js'),
+        filemtime(ETO_PLUGIN_DIR . 'assets/js/public.js'),
         true
     );
 
-    // Includi la libreria jQuery Bracket (minificata)
-    wp_enqueue_script(
-        'jquery-bracket',
-        plugins_url('assets/js/jquery.bracket.min.js', ETO_PLUGIN_DIR),
-        array('jquery'),
-        '2.0.0', // Aggiorna con la versione corretta se necessario
-        true
-    );
-
-    // Includi il file di logica personalizzata per il bracket
-    wp_enqueue_script(
-        'bracket-logic',
-        plugins_url('assets/js/bracket-logic.js', ETO_PLUGIN_DIR),
-        array('jquery', 'jquery-bracket'),
-        '1.0.0', // Versione personalizzata
-        true
-    );
-
-    // Localizza variabili per JavaScript nel frontend
-    wp_localize_script('eto-public', 'etoVars', array(
+    // Localizza variabili per JavaScript
+    wp_localize_script('eto-public', 'eto_ajax', array(
         'ajaxurl' => admin_url('admin-ajax.php'),
-        'nonce'   => wp_create_nonce('eto_public_nonce')
+        'nonce' => ETO_Ajax_Handler::generate_nonce()
     ));
+
+    wp_enqueue_script('eto-public');
 }
 add_action('wp_enqueue_scripts', 'eto_enqueue_public_assets');
-
 
 // Registra script e stili per l'area admin
 function eto_enqueue_admin_assets($hook) {
@@ -64,7 +52,7 @@ function eto_enqueue_admin_assets($hook) {
     wp_enqueue_script(
         'eto-admin',
         plugins_url('assets/js/admin.js', ETO_PLUGIN_DIR),
-        array('jquery', 'wp-util'),
+        array('jquery', 'wp-util', 'wp-i18n'),
         filemtime(ETO_PLUGIN_DIR . 'assets/js/admin.js'),
         true
     );
@@ -72,8 +60,11 @@ function eto_enqueue_admin_assets($hook) {
     // Localizza variabili per JavaScript in admin
     wp_localize_script('eto-admin', 'etoAdminVars', array(
         'ajaxurl' => admin_url('admin-ajax.php'),
+        'nonce' => ETO_Ajax_Handler::generate_nonce(),
         'confirmDelete' => __('Sei sicuro di voler eliminare questo elemento?', 'eto')
     ));
+
+    // Abilita la traduzione degli script
+    wp_set_script_translations('eto-admin', 'eto', ETO_PLUGIN_DIR . 'languages/');
 }
 add_action('admin_enqueue_scripts', 'eto_enqueue_admin_assets');
-?>

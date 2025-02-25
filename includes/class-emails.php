@@ -1,41 +1,41 @@
 <?php
-/**
- * Classe per la gestione delle comunicazioni email
- * @package eSports Tournament Organizer
- * @since 1.1.0
- */
-
 class ETO_Emails {
-    const TEMPLATE_PATH = 'templates/emails/';
-    
+    const TEMPLATE_PATH = '/templates/emails/';
+    private static $instance = null;
+
+    public static function init() {
+        if (is_null(self::$instance)) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
     /**
-     * Invia una notifica generica
+     * Invia email generica
      */
     public static function send($to, $subject, $template, $data = []) {
         try {
-            // Verifica parametri obbligatori
-            if (!is_email($to) || empty($subject) || empty($template)) {
-                throw new Exception(__('Parametri email non validi', 'eto'));
+            if (!is_email($to)) {
+                throw new Exception(__('Indirizzo email non valido', 'eto'));
             }
 
-            // Carica il template
             $headers = ['Content-Type: text/html; charset=UTF-8'];
             $body = self::get_template($template, $data);
+            $subject = sanitize_text_field($subject);
+
+            add_filter('wp_mail_content_type', function() { return 'text/html'; });
             
-            // Invia l'email
             $result = wp_mail($to, $subject, $body, $headers);
             
-            // Registra l'invio nel log
-            if ($result) {
-                self::log_email($to, $subject, 'success');
-            } else {
-                throw new Exception(__('Invio email fallito', 'eto'));
-            }
-
+            remove_filter('wp_mail_content_type', 'set_html_content_type');
+            
+            self::log_email($to, $subject, $result ? 'sent' : 'failed');
+            
             return $result;
 
         } catch (Exception $e) {
             self::log_email($to, $subject, 'error', $e->getMessage());
+            error_log('[ETO] Email Error: ' . $e->getMessage());
             return false;
         }
     }
@@ -44,21 +44,25 @@ class ETO_Emails {
      * Notifica promemoria check-in
      */
     public static function send_checkin_reminder($tournament_id, $user_id) {
-        $tournament = ETO_Tournament::get($tournament_id);
-        $user = get_userdata($user_id);
+        $tournament = ETO_Tournament::get(absint($tournament_id));
+        $user = get_userdata(absint($user_id));
         $team = ETO_Team::get_user_team($user_id, $tournament_id);
+
+        if (!$tournament || !$user || !$team) {
+            return false;
+        }
 
         $data = [
             'tournament_name' => esc_html($tournament->name),
-            'start_date'      => date_i18n(get_option('date_format'), strtotime($tournament->start_date)),
-            'start_time'      => date_i18n(get_option('time_format'), strtotime($tournament->start_date)),
-            'team_name'       => esc_html($team->name),
-            'checkin_link'    => self::generate_checkin_link($tournament_id)
+            'start_date' => date_i18n(get_option('date_format'), strtotime($tournament->start_date)),
+            'start_time' => date_i18n(get_option('time_format'), strtotime($tournament->start_date)),
+            'team_name' => esc_html($team->name),
+            'checkin_link' => self::generate_checkin_link($tournament_id)
         ];
 
         return self::send(
-            $user->user_email,
-            sprintf(__('[Promemoria] Check-in per %s', 'eto'), $tournament->name),
+            sanitize_email($user->user_email),
+            sprintf(__('[Promemoria] Check-in per %s', 'eto'), esc_html($tournament->name)),
             'checkin-reminder',
             $data
         );
@@ -68,96 +72,109 @@ class ETO_Emails {
      * Conferma risultato della partita
      */
     public static function send_result_confirmation($match_id, $winner_id) {
-        $match = ETO_Match::get($match_id);
-        $tournament = ETO_Tournament::get($match->tournament_id);
-        $winner_team = ETO_Team::get($winner_id);
-        
-        // Ottieni i capitani dei team
+        $match = ETO_Match::get(absint($match_id));
+        $tournament = ETO_Tournament::get(absint($match->tournament_id));
+        $winner_team = ETO_Team::get(absint($winner_id));
+
+        if (!$match || !$tournament || !$winner_team) {
+            return false;
+        }
+
         $captains = self::get_match_captains($match_id);
+        $loser_id = ($winner_id == $match->team1_id) ? $match->team2_id : $match->team1_id;
+        $loser_team = ETO_Team::get(absint($loser_id));
 
         $data = [
             'tournament_name' => esc_html($tournament->name),
-            'round'           => esc_html($match->round),
-            'winner_team'     => esc_html($winner_team->name),
-            'loser_team'      => ($winner_id == $match->team1_id) ? 
-                                  ETO_Team::get($match->team2_id)->name : 
-                                  ETO_Team::get($match->team1_id)->name,
-            'results_link'    => self::generate_results_link($tournament->id)
+            'round' => esc_html($match->round),
+            'winner_team' => esc_html($winner_team->name),
+            'loser_team' => esc_html($loser_team->name),
+            'results_link' => self::generate_results_link($tournament->id)
         ];
 
-        // Invia a entrambi i capitani
         foreach ($captains as $email) {
             self::send(
-                $email,
-                sprintf(__('[Conferma] Risultato partita - %s', 'eto'), $tournament->name),
+                sanitize_email($email),
+                sprintf(__('[Conferma] Risultato partita - %s', 'eto'), esc_html($tournament->name)),
                 'result-confirmed',
                 $data
             );
         }
+
+        return true;
     }
 
     /**
-     * Carica un template email
+     * Carica template email con verifica sicurezza
      */
     private static function get_template($name, $data) {
-        $template_file = ETO_PLUGIN_DIR . self::TEMPLATE_PATH . $name . '.php';
-        
-        if (!file_exists($template_file)) {
-            throw new Exception(sprintf(__('Template email %s non trovato', 'eto'), $name));
+        $allowed_templates = ['checkin-reminder', 'result-confirmed'];
+        $template_file = ETO_PLUGIN_DIR . self::TEMPLATE_PATH . sanitize_file_name($name) . '.php';
+
+        if (!in_array($name, $allowed_templates) || !file_exists($template_file)) {
+            throw new Exception(sprintf(__('Template email %s non valido', 'eto'), esc_html($name)));
         }
 
         ob_start();
-        extract($data);
+        foreach ($data as $key => $value) {
+            $$key = is_array($value) ? array_map('esc_html', $value) : esc_html($value);
+        }
         include $template_file;
         return ob_get_clean();
     }
 
     /**
-     * Genera link per il check-in
+     * Genera link sicuro per check-in
      */
     private static function generate_checkin_link($tournament_id) {
-        return add_query_arg(
-            [
-                'action' => 'checkin',
-                'tournament_id' => $tournament_id,
-                'nonce' => wp_create_nonce('checkin_nonce')
-            ],
-            home_url('/checkin')
-        );
+        return add_query_arg([
+            'action' => 'checkin',
+            'tournament_id' => absint($tournament_id),
+            'nonce' => wp_create_nonce('eto_checkin_action')
+        ], home_url('/checkin'));
     }
 
     /**
-     * Registra l'attività email
+     * Registra l'attività email nel log
      */
     private static function log_email($to, $subject, $status, $error = '') {
-        $log_data = [
-            'type' => 'email',
+        ETO_Audit_Log::add([
+            'action_type' => 'email_sent',
+            'object_type' => 'email',
             'details' => [
-                'recipient' => $to,
-                'subject' => $subject,
-                'status' => $status,
-                'error' => $error
+                'recipient' => sanitize_email($to),
+                'subject' => sanitize_text_field($subject),
+                'status' => sanitize_key($status),
+                'error' => sanitize_textarea_field($error)
             ]
-        ];
-
-        ETO_Audit_Log::add($log_data);
+        ]);
     }
 
     /**
-     * Ottieni i capitani dei team della partita
+     * Ottieni i capitani dei team in modo sicuro
      */
     private static function get_match_captains($match_id) {
         global $wpdb;
-        
         return $wpdb->get_col(
             $wpdb->prepare(
-                "SELECT u.user_email 
+                "SELECT u.user_email
                 FROM {$wpdb->prefix}users u
                 INNER JOIN {$wpdb->prefix}eto_teams t ON t.captain_id = u.ID
                 INNER JOIN {$wpdb->prefix}eto_matches m ON m.team1_id = t.id OR m.team2_id = t.id
                 WHERE m.id = %d",
-                $match_id
+                absint($match_id)
             )
         );
+    }
+
+    /**
+     * Genera link risultati torneo
+     */
+    private static function generate_results_link($tournament_id) {
+        return esc_url(add_query_arg(
+            'tournament_id',
+            absint($tournament_id),
+            home_url('/tournament-results')
+        ));
     }
 }

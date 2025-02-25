@@ -20,7 +20,6 @@ class ETO_Team {
 
             $wpdb->query('START TRANSACTION');
 
-            // Creazione team
             $team_result = $wpdb->insert(
                 "{$wpdb->prefix}eto_teams",
                 [
@@ -47,7 +46,6 @@ class ETO_Team {
 
             $team_id = $wpdb->insert_id;
 
-            // Aggiunta membri
             foreach ($validated['members'] as $index => $user_id) {
                 $is_captain = ($index === 0);
                 $member_result = self::add_member($team_id, $user_id, $is_captain);
@@ -60,7 +58,6 @@ class ETO_Team {
             ETO_Tournament::update_team_count($validated['tournament_id']);
             $wpdb->query('COMMIT');
 
-            // Audit log
             ETO_Audit_Log::add([
                 'action_type' => 'team_created',
                 'object_id' => $team_id,
@@ -93,7 +90,6 @@ class ETO_Team {
                 );
             }
 
-            // Fix SQL Injection: Aggiunto prepare()
             if (self::is_user_in_tournament($user_id, $team->tournament_id)) {
                 throw new Exception(
                     __('Utente già registrato in un altro team per questo torneo', 'eto')
@@ -105,7 +101,6 @@ class ETO_Team {
                 throw new Exception(__('ID utente non valido', 'eto'));
             }
 
-            // Sanitizzazione avanzata nazionalità
             $nationality_meta = get_user_meta($user_id, 'nationality', true);
             $nationality = substr(sanitize_text_field($nationality_meta), 0, self::NATIONALITY_LENGTH);
             $nationality = strtoupper($nationality);

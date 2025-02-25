@@ -1,108 +1,104 @@
 <?php
-/**
- * Template: Gestione Tornei
- * @package eSports Tournament Organizer
- */
+class ETO_Ajax_Handler {
+    const NONCE_ACTION = 'eto_ajax_nonce';
 
-// Blocca l'accesso diretto
-if (!defined('ABSPATH')) {
-    exit;
+    public static function init() {
+        add_action('wp_ajax_eto_create_tournament', [__CLASS__, 'handle_create_tournament']);
+        add_action('wp_ajax_eto_confirm_match', [__CLASS__, 'handle_confirm_match']);
+        add_action('wp_ajax_eto_report_dispute', [__CLASS__, 'handle_report_dispute']);
+        add_action('wp_ajax_nopriv_eto_get_standings', [__CLASS__, 'handle_get_standings']);
+    }
+
+    public static function generate_nonce() {
+        return wp_create_nonce(self::NONCE_ACTION);
+    }
+
+    private static function verify_request($action = '') {
+        $nonce = $_REQUEST['nonce'] ?? '';
+        if (!wp_verify_nonce($nonce, self::NONCE_ACTION)) {
+            wp_send_json_error(__('Verifica di sicurezza fallita', 'eto'), 403);
+        }
+
+        if (!current_user_can('manage_eto_tournaments')) {
+            wp_send_json_error(__('Permessi insufficienti', 'eto'), 403);
+        }
+    }
+
+    public static function handle_create_tournament() {
+        try {
+            self::verify_request();
+            
+            // Validazione dati
+            $data = [
+                'name' => sanitize_text_field($_POST['name']),
+                'format' => sanitize_key($_POST['format']),
+                'game_type' => sanitize_key($_POST['game_type']),
+                'start_date' => sanitize_text_field($_POST['start_date']),
+                'end_date' => sanitize_text_field($_POST['end_date']),
+                'teams' => array_map('absint', $_POST['teams'])
+            ];
+
+            $result = ETO_Tournament::create($data);
+            
+            wp_send_json_success([
+                'message' => __('Torneo creato con successo', 'eto'),
+                'tournament_id' => $result
+            ]);
+
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage(), 400);
+        }
+    }
+
+    public static function handle_confirm_match() {
+        try {
+            self::verify_request();
+
+            $match_id = absint($_POST['match_id']);
+            $winner_id = absint($_POST['winner_id']);
+
+            $result = ETO_Match::confirm($match_id, $winner_id, $_POST['nonce']);
+            
+            wp_send_json_success([
+                'message' => __('Risultato confermato', 'eto'),
+                'match_id' => $match_id
+            ]);
+
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage(), 400);
+        }
+    }
+
+    public static function handle_report_dispute() {
+        try {
+            self::verify_request();
+
+            $match_id = absint($_POST['match_id']);
+            $reason = sanitize_textarea_field($_POST['reason']);
+
+            $result = ETO_Match::dispute($match_id, $reason, $_POST['nonce']);
+            
+            wp_send_json_success([
+                'message' => __('Disputa registrata', 'eto'),
+                'match_id' => $match_id
+            ]);
+
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage(), 400);
+        }
+    }
+
+    public static function handle_get_standings() {
+        try {
+            $tournament_id = absint($_POST['tournament_id']);
+            $standings = ETO_Tournament::get_standings($tournament_id);
+            
+            wp_send_json_success([
+                'standings' => $standings
+            ]);
+
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage(), 400);
+        }
+    }
 }
-
-// Carica le dipendenze di WordPress necessarie
-if (!function_exists('wp_get_current_user')) {
-    require_once(ABSPATH . WPINC . '/pluggable.php');
-}
-
-// Controllo permessi con capacità specifica del plugin
-if (!current_user_can('manage_eto_tournaments')) {
-    wp_die(__('Accesso negato: Non hai i permessi necessari per visualizzare questa pagina.', 'eto'));
-}
-
-// Recupera dati con controllo degli errori
-try {
-    $tournaments = ETO_Tournament::get_all();
-} catch (Exception $e) {
-    $tournaments = [];
-    echo '<div class="notice notice-error"><p>' . esc_html__('Errore nel caricamento dei tornei:', 'eto') . ' ' . esc_html($e->getMessage()) . '</p></div>';
-}
-?>
-
-<div class="wrap eto-admin-wrap">
-    <h1 class="eto-admin-title">
-        <?php esc_html_e('Gestione Tornei', 'eto'); ?>
-        <a href="<?php echo esc_url(admin_url('admin.php?page=eto-create-tournament')); ?>" class="page-title-action">
-            <?php esc_html_e('Aggiungi Nuovo', 'eto'); ?>
-        </a>
-    </h1>
-    
-    <div class="eto-admin-content">
-        <?php if (!empty($tournaments)) : ?>
-            <table class="wp-list-table widefat fixed striped eto-tournaments-table">
-                <thead>
-                    <tr>
-                        <th><?php esc_html_e('Nome', 'eto'); ?></th>
-                        <th><?php esc_html_e('Formato', 'eto'); ?></th>
-                        <th><?php esc_html_e('Data Inizio', 'eto'); ?></th>
-                        <th><?php esc_html_e('Stato', 'eto'); ?></th>
-                        <th><?php esc_html_e('Azioni', 'eto'); ?></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($tournaments as $tournament) : 
-                        $start_date = strtotime($tournament->start_date);
-                        $status_label = ucfirst($tournament->status);
-                        $status_class = str_replace(' ', '-', strtolower($status_label));
-                    ?>
-                        <tr>
-                            <td><?php echo esc_html($tournament->name); ?></td>
-                            <td><?php echo esc_html(ucfirst(str_replace('_', ' ', $tournament->format))); ?></td>
-                            <td><?php echo ($start_date ? date_i18n(get_option('date_format'), $start_date) : 'N/A'); ?></td>
-                            <td>
-                                <span class="eto-status-badge eto-status-<?php echo esc_attr($status_class); ?>">
-                                    <?php echo esc_html($status_label); ?>
-                                </span>
-                            </td>
-                            <td>
-                                <div class="eto-actions">
-                                    <a href="<?php echo esc_url(admin_url("admin.php?page=eto-tournaments&action=edit&tournament_id={$tournament->id}")); ?>" 
-                                       class="button button-primary">
-                                        <?php esc_html_e('Modifica', 'eto'); ?>
-                                    </a>
-                                    <button class="button eto-delete-tournament" 
-                                            data-tournament-id="<?php echo absint($tournament->id); ?>"
-                                            data-nonce="<?php echo esc_attr(wp_create_nonce('delete_tournament_' . $tournament->id)); ?>">
-                                        <?php esc_html_e('Elimina', 'eto'); ?>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php else : ?>
-            <div class="notice notice-info">
-                <p><?php esc_html_e('Nessun torneo trovato.', 'eto'); ?></p>
-            </div>
-        <?php endif; ?>
-    </div>
-</div>
-
-<style>
-.eto-status-badge {
-    padding: 4px 8px;
-    border-radius: 3px;
-    font-size: 12px;
-}
-
-.eto-status-pending { background: #f0f0f0; color: #555; }
-.eto-status-active { background: #d8f2e5; color: #1a4d32; }
-.eto-status-completed { background: #e5f2f8; color: #1a3d4d; }
-.eto-status-cancelled { background: #f8e5e5; color: #4d1a1a; }
-
-.eto-actions {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-}
-</style>

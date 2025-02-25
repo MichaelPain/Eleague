@@ -10,16 +10,12 @@ class ETO_Match {
         global $wpdb;
 
         try {
-            // Verifica permessi
-            if (!current_user_can('manage_eto_matches')) {
-                throw new Exception(__('Permessi insufficienti per creare partite', 'eto'));
-            }
-
-            // Verifica nonce per azioni admin
+            // Verifica nonce aggiunto
             if (!isset($data['_wpnonce']) || !wp_verify_nonce($data['_wpnonce'], self::NONCE_ACTION)) {
                 throw new Exception(__('Verifica di sicurezza fallita', 'eto'));
             }
 
+            // Validazione migliorata
             $validated = [
                 'tournament_id' => absint($data['tournament_id']),
                 'round' => sanitize_text_field($data['round']),
@@ -33,7 +29,6 @@ class ETO_Match {
                 'updated_at' => current_time('mysql')
             ];
 
-            // Validazioni avanzate
             if ($validated['team1_id'] === $validated['team2_id']) {
                 throw new Exception(__('Una partita non può avere lo stesso team su entrambi i lati', 'eto'));
             }
@@ -94,7 +89,6 @@ class ETO_Match {
         global $wpdb;
 
         try {
-            // Verifica nonce
             if (!wp_verify_nonce($nonce, self::NONCE_ACTION)) {
                 throw new Exception(__('Verifica di sicurezza fallita', 'eto'));
             }
@@ -247,7 +241,6 @@ class ETO_Match {
         global $wpdb;
 
         try {
-            // Verifica nonce
             if (!wp_verify_nonce($nonce, self::NONCE_ACTION)) {
                 throw new Exception(__('Verifica di sicurezza fallita', 'eto'));
             }
@@ -298,9 +291,24 @@ class ETO_Match {
                 throw new Exception(__('Dimensione massima consentita: 5MB', 'eto'));
             }
 
-            $file_info = wp_check_filetype_and_ext($file['tmp_name'], $file['name']);
-            if (!in_array($file_info['type'], ['image/jpeg', 'image/png', 'image/gif'])) {
-                throw new Exception(__('Formato file non supportato', 'eto'));
+            // Controllo doppio MIME type
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $real_mime = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+
+            $allowed_mimes = [
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+                'image/gif' => 'gif'
+            ];
+
+            if (!array_key_exists($real_mime, $allowed_mimes)) {
+                throw new Exception(__('Tipo file non supportato', 'eto'));
+            }
+
+            $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+            if ($allowed_mimes[$real_mime] !== strtolower($ext)) {
+                throw new Exception(__('Estensione file non corrisponde al tipo reale', 'eto'));
             }
 
             $upload_dir = wp_upload_dir();
