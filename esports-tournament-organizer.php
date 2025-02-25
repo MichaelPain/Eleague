@@ -15,52 +15,50 @@
 
 defined('ABSPATH') || exit;
 
-error_log('[ETO] Plugin loaded successfully. Included files: ' . print_r($core_files, true));
-
 // ==================================================
-// 1. DEFINIZIONE COSTANTI E PERCORSI (Aggiornata)
+// 1. DEFINIZIONE COSTANTI E PERCORSI
 // ==================================================
 define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ETO_DB_VERSION', '3.2.1');
 define('ETO_TEMPLATE_DIR', ETO_PLUGIN_DIR . 'templates/');
+
 if (!defined('ETO_DEBUG_LOG')) {
-    define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log'); 
+    define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log');
+}
 
 // ==================================================
-// 2. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ (Migliorata)
+// 2. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ
 // ==================================================
 $core_files = [
     // Database e migrazioni
-    'includes/class-activator.php',
-    'includes/class-cron.php',
-    'includes/class-deactivator.php',
-    'includes/class-uninstaller.php',
     'includes/class-database.php',
     'includes/class-user-roles.php',
     'includes/class-installer.php',
-
+    'includes/class-activator.php',
+    'includes/class-deactivator.php',
+    'includes/class-uninstaller.php',
+    
     // Logica core
     'includes/class-tournament.php',
-    'includes/class-team.php',
+    'includes/class-team.php', 
     'includes/class-match.php',
     'includes/class-swiss.php',
     'includes/class-emails.php',
-    'includes/class-riot-api.php',
-
+    'includes/class-shortcodes.php',
+    
     // Sistema
+    'includes/class-cron.php',
     'includes/class-audit-log.php',
     'includes/class-ajax-handler.php',
-    'includes/class-shortcodes.php',
-
+    
     // Frontend
     'public/shortcodes.php',
     'public/class-checkin.php',
-
+    
     // Admin
-    'admin/admin-ajax.php',
     'admin/admin-pages.php',
-    'admin/class-settings-register.php',
+    'admin/class-settings-register.php'
 ];
 
 foreach ($core_files as $file) {
@@ -83,26 +81,14 @@ foreach ($core_files as $file) {
 }
 
 // ==================================================
-// 3. REGISTRAZIONE HOOK PRINCIPALI (Revisionata)
+// 3. REGISTRAZIONE HOOK PRINCIPALI
 // ==================================================
 register_activation_hook(__FILE__, function() {
     try {
-        // 1. Setup iniziale
         ETO_User_Roles::init();
         ETO_Installer::track_installer();
-        
-        // 2. Installazione database
         ETO_Database::install();
         ETO_Database::maybe_update_db();
-        
-        // 3. Aggiornamento capacità admin
-        $admin = get_role('administrator');
-        foreach (ETO_User_Roles::SUPER_CAPS as $cap) {
-            if (!$admin->has_cap($cap)) {
-                $admin->add_cap($cap);
-            }
-        }
-
     } catch (Exception $e) {
         error_log('[ETO] Activation Error: ' . $e->getMessage());
         wp_die(
@@ -117,7 +103,7 @@ register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation'])
 register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
 
 // ==================================================
-// 4. INIZIALIZZAZIONE COMPONENTI (Sicurezza migliorata)
+// 4. INIZIALIZZAZIONE COMPONENTI
 // ==================================================
 add_action('plugins_loaded', function() {
     // Traduzioni
@@ -138,11 +124,11 @@ add_action('plugins_loaded', function() {
     }
 
     // Shortcode
-    add_action('init', ['ETO_Shortcodes', 'init']);
+    ETO_Shortcodes::init();
 });
 
 // ==================================================
-// 5. GESTIONE ERRORI E DEBUG (Aggiornata)
+// 5. GESTIONE ERRORI E DEBUG
 // ==================================================
 if (defined('WP_DEBUG') && WP_DEBUG) {
     ini_set('display_errors', '0');
@@ -162,7 +148,7 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
 }
 
 // ==================================================
-// 6. SUPPORTO MULTISITO (Corretta integrazione)
+// 6. SUPPORTO MULTISITO
 // ==================================================
 if (is_multisite()) {
     require_once ETO_PLUGIN_DIR . 'includes/class-multisite.php';
