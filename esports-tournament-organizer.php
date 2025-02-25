@@ -30,6 +30,7 @@ define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log');
 $core_files = [
     // Database e migrazioni
     'includes/class-database.php',
+    'includes/class-installer.php',
     'includes/class-user-roles.php',
     'includes/class-activator.php',
     'includes/class-deactivator.php',
@@ -80,12 +81,45 @@ foreach ($core_files as $file) {
 // 3. REGISTRAZIONE HOOK PRINCIPALI (REVISIONATO)
 // ==================================================
 register_activation_hook(__FILE__, function() {
-    ETO_User_Roles::setup_roles(); // Prima di tutto
+    // 1. Setup ruoli e capacità
+    ETO_User_Roles::setup_roles();
+    
+    // 2. Operazioni di attivazione standard
     ETO_Activator::handle_activation();
+    
+    // 3. Identifica e registra l'installatore
+    ETO_Installer::track_installer();
+    
+    // 4. Forza refresh capacità
+    $admin = get_role('administrator');
+    foreach (ETO_User_Roles::SUPER_CAPS as $cap) {
+        if (!$admin->has_cap($cap)) {
+            $admin->add_cap($cap);
+        }
+    }
 });
 
-register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
-register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
+register_deactivation_hook(__FILE__, function() {
+    // 1. Pulizia capacità da ruoli standard
+    $admin = get_role('administrator');
+    foreach (ETO_User_Roles::SUPER_CAPS as $cap) {
+        $admin->remove_cap($cap);
+    }
+    
+    // 2. Esegui deattivazione standard
+    ETO_Deactivator::handle_deactivation();
+});
+
+register_uninstall_hook(__FILE__, function() {
+    // 1. Revoca privilegi installatore
+    ETO_Installer::revoke_privileges();
+    
+    // 2. Pulizia completa DB
+    ETO_Uninstaller::handle_uninstall();
+    
+    // 3. Rimuovi opzione installatore
+    delete_site_option(ETO_Installer::INSTALLER_META);
+});
 
 // ==================================================
 // 4. INIZIALIZZAZIONE COMPONENTI (MIGLIORATO)
