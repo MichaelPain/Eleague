@@ -99,8 +99,13 @@ register_activation_hook(__FILE__, function() {
     }
 });
 
-register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
-register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
+if (class_exists('ETO_Deactivator')) {
+    register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
+}
+
+if (class_exists('ETO_Uninstaller')) {
+    register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
+}
 
 // ==================================================
 // 4. INIZIALIZZAZIONE COMPONENTI
@@ -119,12 +124,14 @@ add_action('plugins_loaded', function() {
     }
 
     // Caricamento admin
-    if (is_admin() && !defined('DOING_AJAX')) {
+    if (is_admin() && !defined('DOING_AJAX') && class_exists('ETO_Settings_Register')) {
         ETO_Settings_Register::init();
     }
 
     // Shortcode
-    ETO_Shortcodes::init();
+    if (class_exists('ETO_Shortcodes')) {
+        ETO_Shortcodes::init();
+    }
 });
 
 // ==================================================
@@ -150,7 +157,9 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
 // ==================================================
 // 6. SUPPORTO MULTISITO
 // ==================================================
-if (is_multisite()) {
+if (is_multisite() && file_exists(ETO_PLUGIN_DIR . 'includes/class-multisite.php')) {
     require_once ETO_PLUGIN_DIR . 'includes/class-multisite.php';
-    ETO_Multisite::init();
+    if (class_exists('ETO_Multisite')) {
+        ETO_Multisite::init();
+    }
 }
