@@ -41,7 +41,7 @@ class ETO_Tournament {
         $checkin_enabled = isset($data['checkin_enabled']) ? 1 : 0;
         $third_place_match = isset($data['third_place_match']) ? 1 : 0;
 
-        // Verifica errori di validazione
+        // Controllo errori principale
         if ($format instanceof WP_Error) return $format;
         if ($start_date instanceof WP_Error) return $start_date;
         if ($end_date instanceof WP_Error) return $end_date;
@@ -71,7 +71,6 @@ class ETO_Tournament {
             );
         }
 
-        // Validazione date
         if ($start_date >= $end_date) {
             return new WP_Error('invalid_dates',
                 __('La data di fine deve essere successiva alla data di inizio', 'eto')
@@ -265,65 +264,54 @@ class ETO_Tournament {
         return $matches;
     }
 
-private static function generate_double_elimination_bracket($team_ids, $max_teams) {
-    $total_rounds = log($max_teams, 2);
-    $winners_bracket = self::generate_single_elimination_bracket($team_ids, $max_teams);
-    $losers_bracket = [];
+    private static function generate_double_elimination_bracket($team_ids, $max_teams) {
+        $total_rounds = log($max_teams, 2);
+        $winners_bracket = self::generate_single_elimination_bracket($team_ids, $max_teams);
+        $losers_bracket = [];
+        $losers_pool = [];
 
-
-    // Distribuzione dei perdenti del winners bracket nel losers bracket
-    for ($round = 1; $round < $total_rounds; $round++) {
-        $current_round = $winners_bracket["Round $round"];
-        $losers_pool = array_merge(
-            $losers_pool,
-            array_filter($current_round, function($match) {
-                return empty($match['team2_id']);
-            })
-        );
-    }
-
-    // Generazione round per i perdenti
-    $remaining_teams = count($losers_pool);
-    $chunk_size = $remaining_teams / 2;
-
-    for ($round = 1; $round <= $total_rounds - 1; $round++) {
-        $round_matches = [];
-        
-        foreach (array_chunk($losers_pool, $chunk_size) as $pair) {
-            $round_matches[] = [
-                'team1_id' => $pair[0],
-                'team2_id' => $pair[1] ?? 0
-            ];
+        // Distribuzione dei perdenti del winners bracket nel losers bracket
+        for ($round = 1; $round < $total_rounds; $round++) {
+            $current_round = $winners_bracket["Round $round"];
+            $losers_pool = array_merge(
+                $losers_pool,
+                array_filter($current_round, function($match) {
+                    return empty($match['team2_id']);
+                })
+            );
         }
 
-        $losers_bracket["Losers Round $round"] = $round_matches;
-        $losers_pool = array_fill(0, $chunk_size, null);
+        // Generazione round per i perdenti
+        $remaining_teams = count($losers_pool);
+        $chunk_size = $remaining_teams / 2;
+
+        for ($round = 1; $round <= $total_rounds - 1; $round++) {
+            $round_matches = [];
+            
+            foreach (array_chunk($losers_pool, $chunk_size) as $pair) {
+                $round_matches[] = [
+                    'team1_id' => $pair[0],
+                    'team2_id' => $pair[1] ?? 0
+                ];
+            }
+
+            $losers_bracket["Losers Round $round"] = $round_matches;
+            $losers_pool = array_fill(0, $chunk_size, null);
+        }
+
+        // Aggiunta finale tra vincitore winners e vincitore losers
+        $winners_finalist = $winners_bracket["Round $total_rounds"][0]['team1_id'];
+        $losers_finalist = reset($losers_pool) ?? null;
+
+        $losers_bracket["Grand Finals"] = [
+            [
+                'team1_id' => $winners_finalist,
+                'team2_id' => $losers_finalist
+            ]
+        ];
+
+        return array_merge($winners_bracket, $losers_bracket);
     }
-
-    // Aggiunta finale tra vincitore winners e vincitore losers
-    $winners_finalist = $winners_bracket["Round $total_rounds"][0]['team1_id'];
-    $losers_finalist = reset($losers_pool) ?? null;
-
-    $losers_bracket["Grand Finals"] = [
-        [
-            'team1_id' => $winners_finalist,
-            'team2_id' => $losers_finalist
-        ]
-    ];
-
-    return array_merge($winners_bracket, $losers_bracket);
-}
-
-    // Aggiunta finale tra vincitore del winners e vincitore del losers
-    $losers_bracket["Grand Finals"] = [
-        [
-            'team1_id' => $winners_bracket["Round $total_rounds"][0]['team1_id'],
-            'team2_id' => null
-        ]
-    ];
-
-    return array_merge($winners_bracket, $losers_bracket);
-}
 
     private static function sanitize_format($format) {
         $allowed = [
