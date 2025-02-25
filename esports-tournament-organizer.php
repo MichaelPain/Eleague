@@ -2,7 +2,7 @@
 /**
  * Plugin Name: eSports Tournament Organizer
  * Plugin URI: https://github.com/MichaelPain/Eleague
- * Description: Gestione avanzata tornei eSports con bracket, team e integrazioni.
+ * Description: Gestione avanzata tornei eSports con bracket, team e integrazioni
  * Version: 3.2.1
  * Author: MichaelPain
  * License: GPLv3
@@ -16,7 +16,7 @@
 defined('ABSPATH') || exit;
 
 // ==================================================
-// 1. DEFINIZIONE COSTANTI E PERCORSI
+// 1. DEFINIZIONE COSTANTI E PERCORSI (Aggiornata)
 // ==================================================
 define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -25,37 +25,40 @@ define('ETO_TEMPLATE_DIR', ETO_PLUGIN_DIR . 'templates/');
 define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log');
 
 // ==================================================
-// 2. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ
+// 2. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ (Migliorata)
 // ==================================================
 $core_files = [
     // Database e migrazioni
-    'includes/class-database.php',
-    'includes/class-installer.php',
-    'includes/class-user-roles.php',
     'includes/class-activator.php',
     'includes/class-deactivator.php',
     'includes/class-uninstaller.php',
-    
+    'includes/class-database.php',
+    'includes/class-user-roles.php',
+    'includes/class-installer.php',
+
     // Logica core
     'includes/class-tournament.php',
-    'includes/class-team.php', 
+    'includes/class-team.php',
     'includes/class-match.php',
     'includes/class-swiss.php',
     'includes/class-emails.php',
-    
+    'includes/class-riot-api.php',
+
     // Sistema
     'includes/class-cron.php',
     'includes/class-audit-log.php',
     'includes/class-ajax-handler.php',
-    
+    'includes/class-shortcodes.php',
+
     // Frontend
     'public/shortcodes.php',
     'public/class-checkin.php',
-    
+    'public/class-leaderboard.php',
+
     // Admin
     'admin/admin-ajax.php',
     'admin/admin-pages.php',
-    'admin/class-settings-register.php'
+    'admin/class-settings-register.php',
 ];
 
 foreach ($core_files as $file) {
@@ -66,63 +69,53 @@ foreach ($core_files as $file) {
             if (current_user_can('activate_plugins')) {
                 echo '<div class="notice notice-error"><p>';
                 printf(
-                    __('Errore critico: File %s mancante. Reinstalla il plugin.', 'eto'),
+                    esc_html__('Errore critico: File %s mancante. Reinstalla il plugin.', 'eto'),
                     '<code>' . esc_html(basename($file)) . '</code>'
                 );
                 echo '</p></div>';
             }
         });
-        return; // Blocca l'esecuzione se manca un file critico
+        return;
     }
     require_once $path;
 }
 
 // ==================================================
-// 3. REGISTRAZIONE HOOK PRINCIPALI (REVISIONATO)
+// 3. REGISTRAZIONE HOOK PRINCIPALI (Revisionata)
 // ==================================================
 register_activation_hook(__FILE__, function() {
-    // 1. Setup ruoli e capacità
-    ETO_User_Roles::setup_roles();
-    
-    // 2. Operazioni di attivazione standard
-    ETO_Activator::handle_activation();
-    
-    // 3. Identifica e registra l'installatore
-    ETO_Installer::track_installer();
-    
-    // 4. Forza refresh capacità
-    $admin = get_role('administrator');
-    foreach (ETO_User_Roles::SUPER_CAPS as $cap) {
-        if (!$admin->has_cap($cap)) {
-            $admin->add_cap($cap);
+    try {
+        // 1. Setup iniziale
+        ETO_User_Roles::init();
+        ETO_Installer::track_installer();
+        
+        // 2. Installazione database
+        ETO_Database::install();
+        ETO_Database::maybe_update_db();
+        
+        // 3. Aggiornamento capacità admin
+        $admin = get_role('administrator');
+        foreach (ETO_User_Roles::SUPER_CAPS as $cap) {
+            if (!$admin->has_cap($cap)) {
+                $admin->add_cap($cap);
+            }
         }
+
+    } catch (Exception $e) {
+        error_log('[ETO] Activation Error: ' . $e->getMessage());
+        wp_die(
+            '<h1>' . esc_html__('Errore attivazione plugin', 'eto') . '</h1>' .
+            '<p>' . esc_html($e->getMessage()) . '</p>' .
+            '<p>' . esc_html__('Controlla il log errori per maggiori dettagli.', 'eto') . '</p>'
+        );
     }
 });
 
-register_deactivation_hook(__FILE__, function() {
-    // 1. Pulizia capacità da ruoli standard
-    $admin = get_role('administrator');
-    foreach (ETO_User_Roles::SUPER_CAPS as $cap) {
-        $admin->remove_cap($cap);
-    }
-    
-    // 2. Esegui deattivazione standard
-    ETO_Deactivator::handle_deactivation();
-});
-
-register_uninstall_hook(__FILE__, function() {
-    // 1. Revoca privilegi installatore
-    ETO_Installer::revoke_privileges();
-    
-    // 2. Pulizia completa DB
-    ETO_Uninstaller::handle_uninstall();
-    
-    // 3. Rimuovi opzione installatore
-    delete_site_option(ETO_Installer::INSTALLER_META);
-});
+register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
+register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
 
 // ==================================================
-// 4. INIZIALIZZAZIONE COMPONENTI (MIGLIORATO)
+// 4. INIZIALIZZAZIONE COMPONENTI (Sicurezza migliorata)
 // ==================================================
 add_action('plugins_loaded', function() {
     // Traduzioni
@@ -147,7 +140,7 @@ add_action('plugins_loaded', function() {
 });
 
 // ==================================================
-// 5. GESTIONE ERRORI E DEBUG (SICUREZZA AUMENTATA)
+// 5. GESTIONE ERRORI E DEBUG (Aggiornata)
 // ==================================================
 if (defined('WP_DEBUG') && WP_DEBUG) {
     ini_set('display_errors', '0');
@@ -158,7 +151,7 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
         if (current_user_can('manage_options') && file_exists(ETO_DEBUG_LOG)) {
             echo '<div class="notice notice-info"><p>';
             printf(
-                __('Debug attivo. Log errori: %s', 'eto'),
+                esc_html__('Debug attivo. Log errori: %s', 'eto'),
                 '<code>' . esc_html(ETO_DEBUG_LOG) . '</code>'
             );
             echo '</p></div>';
@@ -167,7 +160,7 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
 }
 
 // ==================================================
-// 6. SUPPORTO MULTISITO (AGGIUNTO)
+// 6. SUPPORTO MULTISITO (Corretta integrazione)
 // ==================================================
 if (is_multisite()) {
     require_once ETO_PLUGIN_DIR . 'includes/class-multisite.php';
