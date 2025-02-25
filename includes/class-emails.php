@@ -2,12 +2,20 @@
 if (!defined('ABSPATH')) exit;
 
 class ETO_Emails {
-    private static $email_headers = [
-        'Content-Type: text/html; charset=UTF-8',
-        'From: ' . sanitize_email(get_option('admin_email'))
-    ];
+    private static $email_headers;
+
+    public static function initialize_headers() {
+        self::$email_headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: ' . sanitize_email(get_option('admin_email'))
+        ];
+    }
 
     public static function send_privilege_notification($user_id) {
+        if (empty(self::$email_headers)) {
+            self::initialize_headers();
+        }
+
         try {
             $user = get_userdata(absint($user_id));
             if (!$user || !is_email($user->user_email)) {
@@ -31,6 +39,10 @@ class ETO_Emails {
     }
 
     public static function send_checkin_reminder($tournament_id, $user_id) {
+        if (empty(self::$email_headers)) {
+            self::initialize_headers();
+        }
+
         $tournament = ETO_Tournament::get(absint($tournament_id));
         $user = get_userdata(absint($user_id));
         $team = ETO_Team::get_user_team($user_id, $tournament_id);
@@ -56,6 +68,10 @@ class ETO_Emails {
     }
 
     public static function send_result_confirmation($match_id, $winner_id) {
+        if (empty(self::$email_headers)) {
+            self::initialize_headers();
+        }
+
         $match = ETO_Match::get(absint($match_id));
         $tournament = ETO_Tournament::get(absint($match->tournament_id));
         $winner_team = ETO_Team::get(absint($winner_id));
@@ -106,14 +122,14 @@ class ETO_Emails {
     }
 
     private static function generate_checkin_link($tournament_id) {
-        return add_query_arg(
+        return esc_url(add_query_arg(
             [
                 'action' => 'checkin',
                 'tournament_id' => absint($tournament_id),
                 'nonce' => wp_create_nonce('eto_checkin_action')
             ],
             home_url('/checkin')
-        );
+        ));
     }
 
     private static function log_email($to, $subject, $status, $error = '') {
@@ -152,6 +168,10 @@ class ETO_Emails {
     }
 
     private static function send($to, $subject, $template, $data) {
+        if (empty(self::$email_headers)) {
+            self::initialize_headers();
+        }
+
         $body = self::get_template($template, $data);
         $headers = self::$email_headers;
 
