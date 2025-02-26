@@ -1,52 +1,7 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-class ETO_Settings_Register {
-    const CAPABILITY = 'manage_eto_settings';
-
-    // 1. REGISTRAZIONE IMPOSTAZIONI CON NONCE
-    public static function register_settings() {
-        register_setting('eto_settings_group', 'eto_riot_api_key', [
-            'type' => 'string', 
-            'sanitize_callback' => [__CLASS__, 'sanitize_api_key'],
-            'default' => '',
-            'show_in_rest' => false
-        ]);
-
-        register_setting('eto_settings_group', 'eto_email_enabled', [
-            'type' => 'boolean',
-            'sanitize_callback' => [__CLASS__, 'sanitize_boolean'],
-            'default' => false,
-            'show_in_rest' => false
-        ]);
-
-        if (!current_user_can(self::CAPABILITY)) return;
-
-        add_settings_section(
-            'eto_main_section',
-            esc_html__('Impostazioni Principali', 'eto'),
-            [__CLASS__, 'settings_section_callback'],
-            'eto_settings_page'
-        );
-
-        add_settings_field(
-            'eto_riot_api_key_field',
-            esc_html__('API Key Riot', 'eto'),
-            [__CLASS__, 'api_key_field_callback'],
-            'eto_settings_page',
-            'eto_main_section',
-            ['label_for' => 'eto_riot_api_key']
-        );
-
-        add_settings_field(
-            'eto_email_enabled_field',
-            esc_html__('Abilita Notifiche Email', 'eto'),
-            [__CLASS__, 'email_enabled_field_callback'],
-            'eto_settings_page',
-            'eto_main_section',
-            ['label_for' => 'eto_email_enabled']
-        );
-    }
+require_once ETO_PLUGIN_DIR . 'admin/class-settings-register.php';
 
     // 2. MENU ADMIN CON GESTIONE NONCE RINFORZATA
     public static function add_admin_menus() {
