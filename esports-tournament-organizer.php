@@ -8,6 +8,13 @@
 
 if (!defined('ABSPATH')) exit;
 
+// Include classi core PRIMA di qualsiasi hook
+require_once plugin_dir_path(__FILE__) . 'includes/class-settings-register.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-tournament.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-team.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-match.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-database.php';
+
 // Definizione costanti protette
 if (!defined('ETO_DEBUG_LOG')) {
     define('ETO_DEBUG_LOG', true);
@@ -17,9 +24,13 @@ if (!defined('ETO_DEBUG_DISPLAY')) {
     define('ETO_DEBUG_DISPLAY', false);
 }
 
-// Definizione percorso plugin
+// Definizione percorsi plugin (AGGIUNTA ETO_PLUGIN_URL)
 if (!defined('ETO_PLUGIN_DIR')) {
     define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
+}
+
+if (!defined('ETO_PLUGIN_URL')) {
+    define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
 }
 
 // Ristorante directory e file system
@@ -95,6 +106,7 @@ add_action('plugins_loaded', function() {
     }
     
     if (is_admin() && !defined('DOING_AJAX')) {
+        // La classe è già stata inclusa all'inizio
         ETO_Settings_Register::init();
     }
     
@@ -129,10 +141,3 @@ add_action('admin_notices', function() {
         echo '</div>';
     }
 });
-
-// Include classi core
-require_once ETO_PLUGIN_DIR . 'includes/class-tournament.php';
-require_once ETO_PLUGIN_DIR . 'includes/class-team.php';
-require_once ETO_PLUGIN_DIR . 'includes/class-match.php';
-require_once ETO_PLUGIN_DIR . 'includes/class-database.php';
-require_once ETO_PLUGIN_DIR . 'includes/class-settings-register.php';
