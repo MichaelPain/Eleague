@@ -111,15 +111,21 @@ class ETO_Settings_Register {
         return (bool) absint($input);
     }
 
-    public static function handle_admin_notices() {
+    public static function handle_notices() {
         if (isset($_GET['settings-updated'])) {
             $message = $_GET['settings-updated'] ? 
                 esc_html__('Impostazioni aggiornate con successo!', 'eto') : 
                 esc_html__('Errore durante il salvataggio!', 'eto');
             
             $type = $_GET['settings-updated'] ? 'success' : 'error';
-            echo '<div class="notice notice-' . $type . '">';
-            echo '<p>' . $message . '</p>';
+            echo '<div class="notice notice-' . esc_attr($type) . '">';
+            echo '<p>' . esc_html($message) . '</p>';
+            echo '</div>';
+        }
+
+        if (!empty($_GET['eto_error'])) {
+            echo '<div class="notice notice-error">';
+            echo '<p>' . esc_html(urldecode(sanitize_text_field($_GET['eto_error']))) . '</p>';
             echo '</div>';
         }
     }
@@ -127,7 +133,7 @@ class ETO_Settings_Register {
     public static function init() {
         add_action('admin_init', [__CLASS__, 'register_settings']);
         add_action('admin_menu', [__CLASS__, 'add_admin_menus']);
-        add_action('admin_notices', [__CLASS__, 'handle_admin_notices']);
+        add_action('admin_notices', [__CLASS__, 'handle_notices']);
     }
 }
 
