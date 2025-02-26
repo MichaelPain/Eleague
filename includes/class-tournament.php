@@ -3,7 +3,6 @@ class ETO_Tournament {
     const MAX_TEAMS = 1000;
     const MIN_PLAYERS = 2;
     const MAX_PLAYERS = 32;
-    const MAX_TEAMS = 64;
     const FORMAT_SINGLE_ELIMINATION = 'single_elimination';
     const FORMAT_DOUBLE_ELIMINATION = 'double_elimination';
     const FORMAT_SWISS = 'swiss';
