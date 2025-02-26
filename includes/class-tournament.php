@@ -1,7 +1,18 @@
-Ecco la **prima parte** del file `includes/class-tournament.php` (righe 1-250) in formato suddiviso per superare i limiti di token:
+<?php
+if (!defined('ABSPATH')) exit;
 
-```php
- __('League of Legends', 'eto'),
+class ETO_Tournament {
+    const FORMAT_SINGLE_ELIMINATION = 'single_elimination';
+    const FORMAT_DOUBLE_ELIMINATION = 'double_elimination';
+    const FORMAT_SWISS = 'swiss';
+    const MIN_PLAYERS = 1;
+    const MAX_PLAYERS = 10;
+    const MAX_TEAMS = 64;
+    const ALLOWED_GAME_TYPES = ['lol', 'csgo', 'dota2', 'valorant', 'overwatch'];
+
+    public static function get_supported_games() {
+        return [
+            'lol' => __('League of Legends', 'eto'),
             'csgo' => __('Counter-Strike: Global Offensive', 'eto'),
             'dota2' => __('Dota 2', 'eto'),
             'valorant' => __('Valorant', 'eto'),
@@ -50,14 +61,14 @@ Ecco la **prima parte** del file `includes/class-tournament.php` (righe 1-250) i
         if ($game_type instanceof WP_Error) return $game_type;
 
         // Validazione giocatori per team
-        if ($min_players  self::MAX_PLAYERS) {
+        if ($min_players < self::MIN_PLAYERS || $min_players > self::MAX_PLAYERS) {
             return new WP_Error('invalid_min_players', 
                 sprintf(__('I giocatori minimi devono essere tra %d e %d', 'eto'), 
                 self::MIN_PLAYERS, self::MAX_PLAYERS)
             );
         }
 
-        if ($max_players  self::MAX_PLAYERS) {
+        if ($max_players < $min_players || $max_players > self::MAX_PLAYERS) {
             return new WP_Error('invalid_max_players',
                 sprintf(__('I giocatori massimi devono essere tra %d e %d', 'eto'),
                 $min_players, self::MAX_PLAYERS)
@@ -65,7 +76,7 @@ Ecco la **prima parte** del file `includes/class-tournament.php` (righe 1-250) i
         }
 
         // Validazione numero team
-        if ($max_teams  self::MAX_TEAMS) {
+        if ($max_teams < 2 || $max_teams > self::MAX_TEAMS) {
             set_transient('eto_max_teams_error', 
                 sprintf(__('Il numero massimo di team deve essere tra %d e %d', 'eto'), 
                 2, self::MAX_TEAMS), 
@@ -203,7 +214,15 @@ Ecco la **prima parte** del file `includes/class-tournament.php` (righe 1-250) i
             ARRAY_A
         );
 
-        if (count($teams) max_teams;
+        if (count($teams) < 2) {
+            return new WP_Error('insufficient_teams',
+                __('Sono necessari almeno 2 team per generare il bracket', 'eto')
+            );
+        }
+
+        $team_ids = array_column($teams, 'id');
+        $bracket = [];
+        $max_teams = $tournament->max_teams;
 
         switch ($tournament->format) {
             case self::FORMAT_SINGLE_ELIMINATION:
@@ -250,7 +269,18 @@ Ecco la **prima parte** del file `includes/class-tournament.php` (righe 1-250) i
         $count = count($team_ids);
         $next_power = 2 ** ceil(log($max_teams, 2));
         $byes = $next_power - $count;
-        for ($i = 0; $i  $pair[0],
+        for ($i = 0; $i < $byes; $i++) {
+            $team_ids[] = 0;
+        }
+        shuffle($team_ids);
+        $matches = [];
+        $total_rounds = log($next_power, 2);
+        for ($round = 1; $round <= $total_rounds; $round++) {
+            $round_matches = [];
+            $chunk_size = count($team_ids) / 2;
+            foreach (array_chunk($team_ids, $chunk_size) as $pair) {
+                $round_matches[] = [
+                    'team1_id' => $pair[0],
                     'team2_id' => $pair[1] ?? 0
                 ];
             }
@@ -266,7 +296,23 @@ Ecco la **prima parte** del file `includes/class-tournament.php` (righe 1-250) i
         $losers_bracket = [];
         $losers_pool = [];
 
-        for ($round = 1; $round  $pair[0],
+        for ($round = 1; $round < $total_rounds; $round++) {
+            $current_round = $winners_bracket["Round $round"];
+            $losers_pool = array_merge(
+                $losers_pool,
+                array_filter($current_round, function($match) {
+                    return empty($match['team2_id']);
+                })
+            );
+        }
+
+        $remaining_teams = count($losers_pool);
+        $chunk_size = $remaining_teams / 2;
+        for ($round = 1; $round <= $total_rounds - 1; $round++) {
+            $round_matches = [];
+            foreach (array_chunk($losers_pool, $chunk_size) as $pair) {
+                $round_matches[] = [
+                    'team1_id' => $pair[0],
                     'team2_id' => $pair[1] ?? 0
                 ];
             }
@@ -304,7 +350,22 @@ Ecco la **prima parte** del file `includes/class-tournament.php` (righe 1-250) i
     private static function sanitize_date($date_string) {
         try {
             $date = new DateTime($date_string, new DateTimeZone(wp_timezone_string()));
-            if ($date prefix}eto_tournaments";
+            if ($date < new DateTime('now')) {
+                return new WP_Error('past_date',
+                    __('Non puoi programmare tornei nel passato', 'eto')
+                );
+            }
+            return $date;
+        } catch (Exception $e) {
+            return new WP_Error('invalid_date',
+                __('Formato data non valido', 'eto')
+            );
+        }
+    }
+
+    public static function count($status = null) {
+        global $wpdb;
+        $query = "SELECT COUNT(*) FROM {$wpdb->prefix}eto_tournaments";
         $params = [];
         if ($status) {
             $query .= " WHERE status = %s";
