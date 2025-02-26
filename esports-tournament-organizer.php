@@ -197,10 +197,18 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
 // 9. AVVISO TEAM MASSIMO
 // ==================================================
 add_action('admin_notices', function() {
-    if (current_user_can('manage_eto_tournaments') && ETO_Tournament::count_teams() > ETO_Tournament::MAX_TEAMS) {
-        echo '<div class="notice notice-warning">';
-        esc_html_e('Avviso: Numero team superiore al massimo consentito!', 'eto');
-        echo '</div>';
+    if (current_user_can('manage_eto_tournaments')) {
+        $current_teams = ETO_Tournament::get_total_teams();
+        
+        if ($current_teams > ETO_Tournament::MAX_TEAMS) {
+            echo '<div class="notice notice-warning">';
+            printf(
+                esc_html__('Avviso: %d team registrati (massimo consentito: %d)', 'eto'),
+                $current_teams,
+                ETO_Tournament::MAX_TEAMS
+            );
+            echo '</div>';
+        }
     }
 });
 

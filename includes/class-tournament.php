@@ -1,5 +1,6 @@
 <?php
 class ETO_Tournament {
+    const MAX_TEAMS = 1000;
     const MIN_PLAYERS = 2;
     const MAX_PLAYERS = 32;
     const MAX_TEAMS = 64;
@@ -40,6 +41,20 @@ class ETO_Tournament {
         $max_teams = absint($data['max_teams']);
         $checkin_enabled = isset($data['checkin_enabled']) ? 1 : 0;
         $third_place_match = isset($data['third_place_match']) ? 1 : 0;
+
+
+ public static function get_total_teams() {
+        global $wpdb;
+        return $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams"
+        );
+    }
+    public static function count_teams() {
+        global $wpdb;
+        return $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams"
+        );
+    }
 
         // Controllo errori principale
         if ($format instanceof WP_Error) return $format;
