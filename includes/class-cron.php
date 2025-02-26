@@ -1,12 +1,10 @@
 <?php
+if (!defined('ABSPATH')) exit;
+
 class ETO_Cron {
     const CLEANUP_DAYS = 30;
 
-    public static function init() {
-        add_action('eto_hourly_tasks', [__CLASS__, 'hourly_tasks']);
-        add_action('eto_daily_cleanup', [__CLASS__, 'daily_cleanup']);
-        add_action('eto_daily_maintenance', [__CLASS__, 'daily_maintenance']); // Nuovo hook
-        
+    public static function schedule_events() {
         if (!wp_next_scheduled('eto_hourly_tasks')) {
             wp_schedule_event(time(), 'hourly', 'eto_hourly_tasks');
         }
@@ -14,23 +12,17 @@ class ETO_Cron {
         if (!wp_next_scheduled('eto_daily_cleanup')) {
             wp_schedule_event(time(), 'daily', 'eto_daily_cleanup');
         }
-
-        if (!wp_next_scheduled('eto_daily_maintenance')) { // Nuova schedulazione
-            wp_schedule_event(strtotime('tomorrow 3:00'), 'daily', 'eto_daily_maintenance');
+        
+        if (!wp_next_scheduled('eto_daily_maintenance')) {
+            wp_schedule_event(time(), 'daily', 'eto_daily_maintenance');
         }
-    }
-
-    public static function clear_scheduled_events() {
-        wp_clear_scheduled_hook('eto_hourly_tasks');
-        wp_clear_scheduled_hook('eto_daily_cleanup');
-        wp_clear_scheduled_hook('eto_daily_maintenance');
     }
 
     public static function hourly_tasks() {
         global $wpdb;
         
         try {
-            // 1. Aggiornamento stato tornei
+            // 1. Aggiornamento stati tornei
             $wpdb->query($wpdb->prepare(
                 "UPDATE {$wpdb->prefix}eto_tournaments
                 SET status = CASE
@@ -71,7 +63,7 @@ class ETO_Cron {
     public static function daily_cleanup() {
         global $wpdb;
         $cleanup_date = date('Y-m-d H:i:s', strtotime('-' . self::CLEANUP_DAYS . ' days'));
-
+        
         try {
             // 1. Pulizia tornei completati
             $wpdb->query($wpdb->prepare(
@@ -100,7 +92,6 @@ class ETO_Cron {
         }
     }
 
-    // Nuovo metodo per la verifica privilegi
     public static function daily_maintenance() {
         try {
             $installer_id = get_site_option(ETO_Installer::INSTALLER_META);
@@ -108,6 +99,7 @@ class ETO_Cron {
                 ETO_Installer::revoke_privileges();
                 error_log('[ETO] Privilegi installatore revocati');
             }
+
             error_log('[ETO] Manutenzione giornaliera completata');
         } catch (Exception $e) {
             error_log('[ETO] Errore manutenzione: ' . $e->getMessage());
@@ -116,6 +108,7 @@ class ETO_Cron {
 
     public static function calculate_tiebreakers_for_active() {
         global $wpdb;
+        
         $active_tournaments = $wpdb->get_col($wpdb->prepare(
             "SELECT id FROM {$wpdb->prefix}eto_tournaments
             WHERE status = 'active' AND format = %s",
@@ -126,4 +119,18 @@ class ETO_Cron {
             ETO_Swiss::calculate_tiebreakers(absint($tournament_id));
         }
     }
+
+    public static function add_custom_schedules($schedules) {
+        $schedules['every_6h'] = [
+            'interval' => 6 * HOUR_IN_SECONDS,
+            'display' => __('Ogni 6 ore', 'eto')
+        ];
+        return $schedules;
+    }
 }
+
+// Registra gli hook per gli eventi cron
+add_filter('cron_schedules', ['ETO_Cron', 'add_custom_schedules']);
+add_action('eto_hourly_tasks', ['ETO_Cron', 'hourly_tasks']);
+add_action('eto_daily_cleanup', ['ETO_Cron', 'daily_cleanup']);
+add_action('eto_daily_maintenance', ['ETO_Cron', 'daily_maintenance']);
