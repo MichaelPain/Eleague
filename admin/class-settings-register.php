@@ -6,6 +6,7 @@ if (!class_exists('ETO_Settings_Register')) {
 class ETO_Settings_Register {
     const CAPABILITY = 'manage_eto_settings';
 
+    // 1. REGISTRAZIONE IMPOSTAZIONI
     public static function register_settings() {
         register_setting('eto_settings_group', 'eto_riot_api_key', [
             'type' => 'string', 
@@ -49,6 +50,7 @@ class ETO_Settings_Register {
         );
     }
 
+    // 2. MENU ADMIN
     public static function add_admin_menus() {
         add_menu_page(
             esc_html__('Esports Tournament Organizer', 'eto'),
@@ -60,6 +62,7 @@ class ETO_Settings_Register {
         );
     }
 
+    // 3. RENDER PAGINA IMPOSTAZIONI
     public static function render_settings_page() {
         if (!current_user_can(self::CAPABILITY)) {
             wp_die(esc_html__('Accesso negato', 'eto'));
@@ -71,13 +74,14 @@ class ETO_Settings_Register {
                 <?php 
                 settings_fields('eto_settings_group');
                 do_settings_sections('eto_settings_page');
-                submit_button(esc_attr__('Salva Impostazioni', 'eto'));
+                submit_button(esc_attr__('Salva Impostazioni', 'eto')); 
                 ?>
             </form>
         </div>
         <?php
     }
 
+    // 4. CALLBACKS CAMPI
     public static function settings_section_callback() {
         echo '<p>' . esc_html__('Configura le impostazioni principali del plugin.', 'eto') . '</p>';
     }
@@ -95,6 +99,7 @@ class ETO_Settings_Register {
         echo esc_html__('Abilita l\'invio automatico di email', 'eto') . '</label>';
     }
 
+    // 5. SANITIZZAZIONE (REVISIONATA)
     public static function sanitize_api_key($input) {
         if (!current_user_can(self::CAPABILITY)) {
             add_settings_error(
@@ -111,6 +116,7 @@ class ETO_Settings_Register {
         return (bool) absint($input);
     }
 
+    // 6. GESTIONE NOTIFICHE
     public static function handle_notices() {
         if (isset($_GET['settings-updated'])) {
             $message = $_GET['settings-updated'] ? 
@@ -130,6 +136,7 @@ class ETO_Settings_Register {
         }
     }
 
+    // 7. INIZIALIZZAZIONE
     public static function init() {
         add_action('admin_init', [__CLASS__, 'register_settings']);
         add_action('admin_menu', [__CLASS__, 'add_admin_menus']);

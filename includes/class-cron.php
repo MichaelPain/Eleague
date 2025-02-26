@@ -58,7 +58,7 @@ class ETO_Cron {
         } catch (Exception $e) {
             error_log('[ETO] Errore tasks orari: ' . $e->getMessage());
         }
-    }
+    } // Chiusura corretta del metodo hourly_tasks
 
     public static function daily_cleanup() {
         global $wpdb;
@@ -90,7 +90,7 @@ class ETO_Cron {
         } catch (Exception $e) {
             error_log('[ETO] Errore pulizia giornaliera: ' . $e->getMessage());
         }
-    }
+    } // Chiusura corretta del metodo daily_cleanup
 
     public static function daily_maintenance() {
         try {
@@ -104,7 +104,7 @@ class ETO_Cron {
         } catch (Exception $e) {
             error_log('[ETO] Errore manutenzione: ' . $e->getMessage());
         }
-    }
+    } // Chiusura corretta del metodo daily_maintenance
 
     public static function calculate_tiebreakers_for_active() {
         global $wpdb;

@@ -2,28 +2,38 @@
 if (!defined('ABSPATH')) exit;
 
 class ETO_Emails {
+    const TEMPLATE_PATH = '/templates/emails/';
+    
     private static $email_headers;
 
-    public static function initialize_headers() {
+    private static function initialize_headers() {
         self::$email_headers = [
             'Content-Type: text/html; charset=UTF-8',
-            'From: ' . sanitize_email(get_option('admin_email'))
+            'From: ' . self::validate_email(get_option('admin_email'))
         ];
     }
 
-    public static function send_privilege_notification($user_id) {
-        if (empty(self::$email_headers)) {
-            self::initialize_headers();
+    // 1. METODO DI VALIDAZIONE AGGIUNTO
+    private static function validate_email($email) {
+        if (!is_email($email)) {
+            throw new InvalidArgumentException(__('Indirizzo email non valido', 'eto'));
         }
+        return sanitize_email($email);
+    }
 
+    public static function send_privilege_notification($user_id) {
         try {
+            self::initialize_headers();
             $user = get_userdata(absint($user_id));
-            if (!$user || !is_email($user->user_email)) {
-                throw new Exception(__('Utente o email non validi', 'eto'));
+
+            if (!$user || !$user->user_email) {
+                throw new Exception(__('Utente non valido', 'eto'));
             }
 
+            $valid_email = self::validate_email($user->user_email);
+
             return self::send(
-                sanitize_email($user->user_email),
+                $valid_email,
                 esc_html__('Privilegi plugin concessi', 'eto'),
                 'privilege-notification',
                 [
@@ -39,69 +49,71 @@ class ETO_Emails {
     }
 
     public static function send_checkin_reminder($tournament_id, $user_id) {
-        if (empty(self::$email_headers)) {
+        try {
             self::initialize_headers();
-        }
+            $tournament = ETO_Tournament::get(absint($tournament_id));
+            $user = get_userdata(absint($user_id));
+            $team = ETO_Team::get_user_team($user_id, $tournament_id);
 
-        $tournament = ETO_Tournament::get(absint($tournament_id));
-        $user = get_userdata(absint($user_id));
-        $team = ETO_Team::get_user_team($user_id, $tournament_id);
+            if (!$tournament || !$user || !$team) {
+                throw new Exception(__('Dati incompleti per il reminder', 'eto'));
+            }
 
-        if (!$tournament || !$user || !$team) {
+            $data = [
+                'tournament_name' => esc_html($tournament->name),
+                'start_date' => date_i18n(get_option('date_format'), strtotime($tournament->start_date)),
+                'start_time' => date_i18n(get_option('time_format'), strtotime($tournament->start_date)),
+                'team_name' => esc_html($team->name),
+                'checkin_link' => self::generate_checkin_link($tournament_id)
+            ];
+
+            return self::send(
+                self::validate_email($user->user_email),
+                sprintf(__('[Promemoria] Check-in per %s', 'eto'), esc_html($tournament->name)),
+                'checkin-reminder',
+                $data
+            );
+        } catch (Exception $e) {
+            error_log('[ETO] Errore reminder check-in: ' . $e->getMessage());
             return false;
         }
-
-        $data = [
-            'tournament_name' => esc_html($tournament->name),
-            'start_date' => date_i18n(get_option('date_format'), strtotime($tournament->start_date)),
-            'start_time' => date_i18n(get_option('time_format'), strtotime($tournament->start_date)),
-            'team_name' => esc_html($team->name),
-            'checkin_link' => self::generate_checkin_link($tournament_id)
-        ];
-
-        return self::send(
-            sanitize_email($user->user_email),
-            sprintf(__('[Promemoria] Check-in per %s', 'eto'), esc_html($tournament->name)),
-            'checkin-reminder',
-            $data
-        );
     }
 
     public static function send_result_confirmation($match_id, $winner_id) {
-        if (empty(self::$email_headers)) {
+        try {
             self::initialize_headers();
-        }
+            $match = ETO_Match::get(absint($match_id));
+            $tournament = ETO_Tournament::get(absint($match->tournament_id));
+            $winner_team = ETO_Team::get(absint($winner_id));
 
-        $match = ETO_Match::get(absint($match_id));
-        $tournament = ETO_Tournament::get(absint($match->tournament_id));
-        $winner_team = ETO_Team::get(absint($winner_id));
+            if (!$match || !$tournament || !$winner_team) {
+                throw new Exception(__('Dati partita non validi', 'eto'));
+            }
 
-        if (!$match || !$tournament || !$winner_team) {
+            $loser_id = ($winner_id == $match->team1_id) ? $match->team2_id : $match->team1_id;
+            $loser_team = ETO_Team::get(absint($loser_id));
+
+            $data = [
+                'tournament_name' => esc_html($tournament->name),
+                'round' => esc_html($match->round),
+                'winner_team' => esc_html($winner_team->name),
+                'loser_team' => esc_html($loser_team->name),
+                'results_link' => self::generate_results_link($tournament->id)
+            ];
+
+            foreach (self::get_match_captains($match_id) as $email) {
+                self::send(
+                    self::validate_email($email),
+                    sprintf(__('[Conferma] Risultato partita - %s', 'eto'), esc_html($tournament->name)),
+                    'result-confirmed',
+                    $data
+                );
+            }
+            return true;
+        } catch (Exception $e) {
+            error_log('[ETO] Errore conferma risultato: ' . $e->getMessage());
             return false;
         }
-
-        $captains = self::get_match_captains($match_id);
-        $loser_id = ($winner_id == $match->team1_id) ? $match->team2_id : $match->team1_id;
-        $loser_team = ETO_Team::get(absint($loser_id));
-
-        $data = [
-            'tournament_name' => esc_html($tournament->name),
-            'round' => esc_html($match->round),
-            'winner_team' => esc_html($winner_team->name),
-            'loser_team' => esc_html($loser_team->name),
-            'results_link' => self::generate_results_link($tournament->id)
-        ];
-
-        foreach ($captains as $email) {
-            self::send(
-                sanitize_email($email),
-                sprintf(__('[Conferma] Risultato partita - %s', 'eto'), esc_html($tournament->name)),
-                'result-confirmed',
-                $data
-            );
-        }
-
-        return true;
     }
 
     private static function get_template($name, $data) {
@@ -116,7 +128,6 @@ class ETO_Emails {
         foreach ($data as $key => $value) {
             $$key = is_array($value) ? array_map('esc_html', $value) : esc_html($value);
         }
-
         include $template_file;
         return ob_get_clean();
     }
@@ -137,7 +148,7 @@ class ETO_Emails {
             'action_type' => 'email_sent',
             'object_type' => 'email',
             'details' => [
-                'recipient' => sanitize_email($to),
+                'recipient' => self::validate_email($to),
                 'subject' => sanitize_text_field($subject),
                 'status' => sanitize_key($status),
                 'error' => sanitize_textarea_field($error)
@@ -168,27 +179,30 @@ class ETO_Emails {
     }
 
     private static function send($to, $subject, $template, $data) {
-        if (empty(self::$email_headers)) {
+        try {
             self::initialize_headers();
+            $validated_to = self::validate_email($to);
+            $body = self::get_template($template, $data);
+            
+            $sent = wp_mail(
+                $validated_to,
+                sanitize_text_field($subject),
+                $body,
+                self::$email_headers
+            );
+
+            self::log_email(
+                $validated_to,
+                $subject,
+                $sent ? 'sent' : 'failed',
+                $sent ? '' : (error_get_last()['message'] ?? '')
+            );
+
+            return $sent;
+        } catch (InvalidArgumentException $e) {
+            error_log('[ETO] Email non inviata: ' . $e->getMessage());
+            self::log_email($to, $subject, 'invalid', $e->getMessage());
+            return false;
         }
-
-        $body = self::get_template($template, $data);
-        $headers = self::$email_headers;
-
-        $sent = wp_mail(
-            sanitize_email($to),
-            sanitize_text_field($subject),
-            $body,
-            $headers
-        );
-
-        if (!$sent) {
-            $error = error_get_last();
-            self::log_email($to, $subject, 'failed', $error['message']);
-        } else {
-            self::log_email($to, $subject, 'sent');
-        }
-
-        return $sent;
     }
 }
