@@ -43,19 +43,6 @@ class ETO_Tournament {
         $third_place_match = isset($data['third_place_match']) ? 1 : 0;
 
 
- public static function get_total_teams() {
-        global $wpdb;
-        return $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams"
-        );
-    }
-    public static function count_teams() {
-        global $wpdb;
-        return $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams"
-        );
-    }
-
         // Controllo errori principale
         if ($format instanceof WP_Error) return $format;
         if ($start_date instanceof WP_Error) return $start_date;
@@ -136,6 +123,19 @@ class ETO_Tournament {
             $wpdb->query('ROLLBACK');
             return new WP_Error('db_error', __('Errore durante la creazione del torneo: ', 'eto') . $e->getMessage());
         }
+    }
+
+ public static function get_total_teams() {
+        global $wpdb;
+        return $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams"
+        );
+    }
+    public static function count_teams() {
+        global $wpdb;
+        return $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams"
+        );
     }
 
     public static function update_status($tournament_id, $new_status) {
