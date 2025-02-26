@@ -1,20 +1,21 @@
 <?php
+if (!defined('ABSPATH')) exit;
+
 class ETO_Activator {
-    public static function activate() {
+    public static function handle_activation() {
         global $wpdb;
 
-        // 1. Verifica permessi
+        // 1. Verifica permessi utente
         if (!current_user_can('activate_plugins')) {
-            wp_die(__('Permessi insufficienti per attivare il plugin', 'eto'));
+            wp_die(esc_html__('Permessi insufficienti per attivare questo plugin', 'eto'));
         }
 
-        // 2. Configurazione ruoli utente
+        // 2. Creazione ruoli utente
         $admin_role = get_role('administrator');
         $capabilities = [
             'manage_eto_tournaments',
-            'edit_eto_teams',
-            'delete_eto_matches',
-            'confirm_eto_results'
+            'manage_eto_settings',
+            'edit_eto_teams'
         ];
 
         foreach ($capabilities as $cap) {
@@ -25,10 +26,9 @@ class ETO_Activator {
 
         // 3. Setup database con transazioni
         $wpdb->query('START TRANSACTION');
+
         try {
-            require_once(plugin_dir_path(__FILE__) . 'class-database.php');
-            
-            // Creazione tabelle con nomi sanitizzati
+            // 4. Creazione tabelle
             $tables = [
                 'tournaments' => "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_tournaments (
                     id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -51,7 +51,16 @@ class ETO_Activator {
                     INDEX tournament_dates_idx (start_date, end_date)
                 ) ENGINE=InnoDB DEFAULT CHARSET={$wpdb->charset};",
 
-                'teams' => "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_teams (...)"
+                'teams' => "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}eto_teams (
+                    id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    tournament_id BIGINT(20) UNSIGNED NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    captain_id BIGINT(20) UNSIGNED NOT NULL,
+                    members TEXT NOT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    FOREIGN KEY (tournament_id) REFERENCES {$wpdb->prefix}eto_tournaments(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET={$wpdb->charset};"
             ];
 
             foreach ($tables as $table_sql) {
@@ -60,22 +69,23 @@ class ETO_Activator {
                 }
             }
 
+            // 5. Commit transazione e aggiornamento database
             $wpdb->query('COMMIT');
             ETO_Database::maybe_update_db();
 
         } catch (Exception $e) {
             $wpdb->query('ROLLBACK');
             error_log('[ETO] Activation Error: ' . $e->getMessage());
-            wp_die(__('Errore durante l\'attivazione del plugin: ', 'eto') . $e->getMessage());
+            wp_die(esc_html__('Errore durante l\'attivazione del plugin: ', 'eto') . esc_html($e->getMessage()));
         }
 
-        // 4. Pianificazione eventi cron
+        // 6. Pianificazione eventi cron
         require_once(plugin_dir_path(__FILE__) . 'class-cron.php');
         if (!wp_next_scheduled('eto_daily_maintenance')) {
             wp_schedule_event(time(), 'daily', 'eto_daily_maintenance');
         }
 
-        // 5. Registrazione attivazione
+        // 7. Registrazione timestamp attivazione
         update_option('eto_activation_time', current_time('timestamp'));
     }
 }

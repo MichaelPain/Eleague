@@ -9,6 +9,29 @@
 if (!defined('ABSPATH')) exit;
 
 // ==================================================
+// 1. DEFINIZIONE COSTANTI (PRIMA DI QUALSIASI INCLUSIONE)
+// ==================================================
+if (!defined('ETO_PLUGIN_DIR')) {
+    define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
+}
+
+if (!defined('ETO_PLUGIN_URL')) {
+    define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
+}
+
+if (!defined('ETO_DEBUG_LOG')) {
+    define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log');
+}
+
+if (!defined('ETO_DEBUG_DISPLAY')) {
+    define('ETO_DEBUG_DISPLAY', false);
+}
+
+if (!defined('ETO_DB_VERSION')) {
+    define('ETO_DB_VERSION', '3.0.0');
+}
+
+// ==================================================
 // 2. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ
 // ==================================================
 $core_files = [
@@ -46,7 +69,7 @@ $core_files = [
 ];
 
 foreach ($core_files as $file) {
-    $path = plugin_dir_path(__FILE__) . $file;
+    $path = ETO_PLUGIN_DIR . $file;
     
     if (!file_exists($path)) {
         add_action('admin_notices', function() use ($file) {
@@ -64,30 +87,7 @@ foreach ($core_files as $file) {
 }
 
 // ==================================================
-// 3. DEFINIZIONE COSTANTI
-// ==================================================
-if (!defined('ETO_DEBUG_LOG')) {
-    define('ETO_DEBUG_LOG', true);
-}
-
-if (!defined('ETO_DEBUG_DISPLAY')) {
-    define('ETO_DEBUG_DISPLAY', false);
-}
-
-if (!defined('ETO_DB_VERSION')) {
-    define('ETO_DB_VERSION', '3.0.0');
-}
-
-if (!defined('ETO_PLUGIN_DIR')) {
-    define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
-}
-
-if (!defined('ETO_PLUGIN_URL')) {
-    define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
-}
-
-// ==================================================
-// 4. VERIFICA PERMESSI FILE SYSTEM
+// 3. VERIFICA PERMESSI FILE SYSTEM
 // ==================================================
 $required = [
     'directories' => [
@@ -115,6 +115,9 @@ foreach ($required['directories'] as $path => $expected) {
                 echo '</div>';
             });
         }
+    } else {
+        wp_mkdir_p($path);
+        chmod($path, $expected);
     }
 }
 
@@ -128,53 +131,59 @@ foreach ($required['files'] as $file => $expected) {
             );
             echo '</div>';
         });
+    } elseif (fileperms($file) !== $expected) {
+        chmod($file, $expected);
     }
 }
 
 // ==================================================
-// 5. GESTIONE ERRORI TORNEO
+// 4. GESTIONE ERRORI TORNEO
 // ==================================================
 add_action('admin_notices', function() {
     if (isset($_GET['eto_error']) && current_user_can('manage_options')) {
         echo '<div class="notice notice-error">';
-        echo '<p>' . esc_html(urldecode($_GET['eto_error'])) . '</p>';
+        echo '<p>' . esc_html(urldecode(sanitize_text_field($_GET['eto_error']))) . '</p>';
         echo '<p>' . esc_html__('Controlla il log errori per maggiori dettagli.', 'eto') . '</p>';
         echo '</div>';
     }
 });
 
 // ==================================================
-// 6. HOOK SYSTEM
+// 5. HOOK SYSTEM (COMPLETA)
 // ==================================================
 add_action('admin_post_eto_create_tournament', ['ETO_Tournament', 'handle_tournament_creation']);
 add_action('admin_post_nopriv_eto_create_tournament', function() {
     wp_die(esc_html__('Accesso non autorizzato', 'eto'), 403);
 });
 
+register_activation_hook(__FILE__, ['ETO_Activator', 'handle_activation']);
 register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
 register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
 
 // ==================================================
-// 7. INIZIALIZZAZIONE COMPONENTI
+// 6. INIZIALIZZAZIONE COMPONENTI (DETTAGLIATA)
 // ==================================================
 add_action('plugins_loaded', function() {
     load_plugin_textdomain('eto', false, dirname(plugin_basename(__FILE__)) . '/languages/');
     
+    // Aggiornamento database
     if (version_compare(get_option('eto_db_version', '1.0.0'), ETO_DB_VERSION, '<')) {
         ETO_Database::maybe_update_db();
     }
     
-    if (is_admin() && !defined('DOING_AJAX')) {
-        ETO_Settings_Register::init();
-    }
-    
-    // AGGIUNTA
-    require_once ETO_PLUGIN_DIR . 'includes/class-shortcodes.php';
+    // Inizializzazione componenti
+    ETO_Settings_Register::init();
     ETO_Shortcodes::init();
+    ETO_Cron::schedule_events();
+    
+    // Supporto multisito
+    if (is_multisite()) {
+        ETO_Multisite::init();
+    }
 });
 
 // ==================================================
-// 8. GESTIONE ERRORI E DEBUG
+// 7. GESTIONE DEBUG AVANZATA
 // ==================================================
 if (defined('WP_DEBUG') && WP_DEBUG) {
     ini_set('display_errors', ETO_DEBUG_DISPLAY ? '1' : '0');
@@ -182,7 +191,7 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
     ini_set('error_log', ETO_DEBUG_LOG);
     
     add_action('admin_notices', function() {
-        if (current_user_can('manage_options') && file_exists(ETO_DEBUG_LOG)) {
+        if (current_user_can('manage_options')) {
             echo '<div class="notice notice-info">';
             printf(
                 esc_html__('Debug attivo. Log errori: %s', 'eto'), 
@@ -194,18 +203,19 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
 }
 
 // ==================================================
-// 9. AVVISO TEAM MASSIMO
+// 8. AVVISO TEAM MASSIMO (REVISIONATO)
 // ==================================================
 add_action('admin_notices', function() {
     if (current_user_can('manage_eto_tournaments')) {
         $current_teams = ETO_Tournament::get_total_teams();
+        $max_teams = ETO_Tournament::MAX_TEAMS;
         
-        if ($current_teams > ETO_Tournament::MAX_TEAMS) {
+        if ($current_teams > $max_teams) {
             echo '<div class="notice notice-warning">';
             printf(
-                esc_html__('Avviso: %d team registrati (massimo consentito: %d)', 'eto'),
+                esc_html__('Avviso: Numero team superiore al massimo consentito! (%d/%d)', 'eto'),
                 $current_teams,
-                ETO_Tournament::MAX_TEAMS
+                $max_teams
             );
             echo '</div>';
         }
@@ -213,16 +223,17 @@ add_action('admin_notices', function() {
 });
 
 // ==================================================
-// 10. WP-CLI INTEGRATION (CORRETTA)
+// 9. INTEGRAZIONE WP-CLI
 // ==================================================
 if (defined('WP_CLI') && WP_CLI) {
     require_once ETO_PLUGIN_DIR . 'includes/class-wp-cli.php';
+    WP_CLI::add_command('eto', 'ETO_WPCLI');
 }
 
 // ==================================================
-// 11. SUPPORTO MULTISITO (CORRETTA)
+// 10. SUPPORTO MULTISITO (COMPLETO)
 // ==================================================
 if (is_multisite()) {
-    require_once ETO_PLUGIN_DIR . 'includes/class-multisite.php';
     add_action('wpmu_new_blog', ['ETO_Multisite', 'activate_new_site']);
+    add_filter('network_admin_plugin_action_links', ['ETO_Multisite', 'network_plugin_links']);
 }
