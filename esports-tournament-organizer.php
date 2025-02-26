@@ -9,7 +9,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Include classi core PRIMA di qualsiasi hook
-require_once plugin_dir_path(__FILE__) . 'includes/class-settings-register.php';
+require_once plugin_dir_path(__FILE__) . 'admin/class-settings-register.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-tournament.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-team.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-match.php';
