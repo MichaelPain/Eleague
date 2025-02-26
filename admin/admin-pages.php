@@ -170,7 +170,7 @@ class ETO_Settings_Register {
     public static function init() {
         add_action('admin_init', [__CLASS__, 'register_settings']);
         add_action('admin_menu', [__CLASS__, 'add_admin_menus']);
-        add_action('admin_notices', [__CLASS__, 'handle_admin_notices']);
+        add_action('admin_notices', [__CLASS__, 'handle_notices']);
     }
 }
 
