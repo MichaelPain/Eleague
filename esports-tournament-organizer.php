@@ -168,6 +168,8 @@ add_action('plugins_loaded', function() {
         ETO_Settings_Register::init();
     }
     
+    // AGGIUNTA
+    require_once ETO_PLUGIN_DIR . 'includes/class-shortcodes.php';
     ETO_Shortcodes::init();
 });
 
