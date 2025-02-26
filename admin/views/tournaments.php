@@ -3,12 +3,12 @@ if (!defined('ABSPATH')) exit;
 
 global $wpdb;
 
-// 1. Verifica permessi utente
+// 1. VERIFICA PERMESSI CON CAPABILITY
 if (!current_user_can('manage_eto_tournaments')) {
-    wp_die(__('Accesso negato', 'eto'));
+    wp_die(esc_html__('Accesso negato', 'eto'), 403);
 }
 
-// 2. Recupero tornei con prepared statement
+// 2. RECUPERO TORNEA CON PREPARED STATEMENT
 $tournaments = $wpdb->get_results(
     $wpdb->prepare(
         "SELECT * FROM {$wpdb->prefix}eto_tournaments 
@@ -18,15 +18,28 @@ $tournaments = $wpdb->get_results(
     )
 );
 
-// 3. Gestione eliminazione torneo
+// 3. GESTIONE ELIMINAZIONE CON NONCE
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
     check_admin_referer('delete_tournament_' . $_GET['id']);
-    ETO_Tournament::delete(absint($_GET['id']));
-    eto_redirect_with_message(
-        admin_url('admin.php?page=eto-tournaments'),
-        __('Torneo eliminato con successo', 'eto')
-    );
+    $result = ETO_Tournament::delete(absint($_GET['id']));
+    
+    if (is_wp_error($result)) {
+        eto_redirect_with_message(
+            admin_url('admin.php?page=eto-tournaments'),
+            $result->get_error_message(),
+            'error'
+        );
+    } else {
+        eto_redirect_with_message(
+            admin_url('admin.php?page=eto-tournaments'),
+            esc_html__('Torneo eliminato con successo', 'eto'),
+            'success'
+        );
+    }
 }
+
+// 4. GESTIONE ERRORI DA URL
+$error_message = isset($_GET['eto_error']) ? urldecode(sanitize_text_field($_GET['eto_error'])) : '';
 ?>
 
 <div class="wrap">
@@ -35,9 +48,13 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
         <?php esc_html_e('Aggiungi Nuovo', 'eto'); ?>
     </a>
 
-    <hr class="wp-header-end">
+    <?php if (!empty($error_message)): ?>
+        <div class="notice notice-error">
+            <p><?php echo esc_html($error_message); ?></p>
+        </div>
+    <?php endif; ?>
 
-    <?php if (!empty($tournaments)) : ?>
+    <?php if (!empty($tournaments)): ?>
         <table class="wp-list-table widefat fixed striped">
             <thead>
                 <tr>
@@ -49,12 +66,16 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($tournaments as $t) : ?>
+                <?php foreach ($tournaments as $t): ?>
+                    <?php 
+                        $team_count = ETO_Team::count(absint($t->id));
+                        $max_teams = absint($t->max_teams);
+                    ?>
                     <tr>
                         <td><?php echo esc_html($t->name); ?></td>
                         <td><?php echo esc_html(ucfirst(str_replace('_', ' ', $t->format))); ?></td>
                         <td><?php echo esc_html(date_i18n(get_option('date_format'), strtotime($t->start_date))); ?></td>
-                        <td><?php printf(__('%d/%d', 'eto'), absint(ETO_Team::count($t->id)), absint($t->max_teams)); ?></td>
+                        <td><?php printf(esc_html__('%d/%d', 'eto'), $team_count, $max_teams); ?></td>
                         <td>
                             <a href="<?php echo esc_url(admin_url('admin.php?page=eto-create-tournament&tournament_id=' . absint($t->id))); ?>" 
                                class="button">
@@ -74,7 +95,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
                 <?php endforeach; ?>
             </tbody>
         </table>
-    <?php else : ?>
+    <?php else: ?>
         <div class="notice notice-info">
             <p><?php esc_html_e('Nessun torneo trovato.', 'eto'); ?></p>
         </div>

@@ -1,135 +1,82 @@
-<?php  
+<?php
 if (!defined('ABSPATH')) exit;
-wp_nonce_field('eto_global_nonce');
+
+// 1. VERIFICA PERMESSI UTENTE CON CAPABILITY
+if (!current_user_can('manage_eto_tournaments')) {
+    wp_die(esc_html__('Accesso negato', 'eto'), 403);
+}
+
 global $wpdb;
 
+// 2. LOGICA DI EDITING TORNEO ESISTENTE
 $tournament = null;
-$form_data = get_transient('eto_form_data');
-
 if (isset($_GET['tournament_id'])) {
-    $tournament = ETO_Tournament::get(absint($_GET['tournament_id']));
-    if ($tournament) {
-        $form_data = [
-            'name' => $tournament->name,
-            'format' => $tournament->format,
-            'min_players' => $tournament->min_players,
-            'max_players' => $tournament->max_players,
-            'max_teams' => $tournament->max_teams,
-            'checkin_enabled' => $tournament->checkin_enabled,
-            'third_place_match' => $tournament->third_place_match,
-            'start_date' => $tournament->start_date,
-            'end_date' => $tournament->end_date,
-            'game_type' => $tournament->game_type
-        ];
+    $tournament_id = absint($_GET['tournament_id']);
+    $tournament = ETO_Tournament::get($tournament_id);
+}
+
+// 3. GESTIONE FORM CON DATI DINAMICI
+$allowed_formats = [
+    'single_elimination' => __('Eliminazione Diretta', 'eto'),
+    'double_elimination' => __('Doppia Eliminazione', 'eto'),
+    'swiss' => __('Sistema Svizzero', 'eto')
+];
+
+$allowed_games = [
+    'lol' => 'League of Legends',
+    'dota' => 'Dota 2',
+    'cs' => 'Counter-Strike'
+];
+
+// 4. GESTIONE SUBMIT CON VALIDAZIONE AVANZATA
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
+    check_admin_referer('eto_create_tournament_action', '_wpnonce_create_tournament');
+
+    // Raccolta e sanitizzazione dati
+    $data = [
+        'name' => sanitize_text_field($_POST['name']),
+        'format' => array_key_exists($_POST['format'], $allowed_formats) ? $_POST['format'] : 'single_elimination',
+        'game_type' => array_key_exists($_POST['game_type'], $allowed_games) ? $_POST['game_type'] : 'lol',
+        'start_date' => sanitize_text_field($_POST['start_date']),
+        'end_date' => sanitize_text_field($_POST['end_date']),
+        'min_players' => min(max(absint($_POST['min_players']), ETO_Tournament::MIN_PLAYERS), ETO_Tournament::MAX_PLAYERS),
+        'max_players' => min(max(absint($_POST['max_players']), ETO_Tournament::MIN_PLAYERS), ETO_Tournament::MAX_PLAYERS),
+        'max_teams' => min(absint($_POST['max_teams']), ETO_Tournament::MAX_TEAMS),
+        'checkin_enabled' => isset($_POST['checkin_enabled']) ? 1 : 0,
+        'third_place_match' => isset($_POST['third_place_match']) ? 1 : 0
+    ];
+
+    // 5. LOGICA DI UPDATE/CREAZIONE
+    try {
+        if ($tournament) {
+            $result = ETO_Tournament::update($tournament->id, $data);
+        } else {
+            $result = ETO_Tournament::create($data);
+        }
+
+        if (is_wp_error($result)) {
+            throw new Exception($result->get_error_message());
+        }
+
+        eto_redirect_with_message(
+            admin_url('admin.php?page=eto-tournaments'),
+            $tournament ? __('Torneo aggiornato!', 'eto') : __('Torneo creato!', 'eto'),
+            'success'
+        );
+
+    } catch (Exception $e) {
+        eto_redirect_with_message(
+            admin_url('admin.php?page=eto-create-tournament' . ($tournament ? '&tournament_id=' . $tournament->id : '')),
+            $e->getMessage(),
+            'error'
+        );
     }
 }
 
-?>
-
-<div class="wrap">
-    <h1><?php esc_html_e('Crea Nuovo Torneo', 'eto'); ?></h1>
-    
-    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-        <input type="hidden" name="action" value="eto_create_tournament">
-        <?php wp_nonce_field('eto_create_tournament_action', '_eto_create_nonce'); ?>
-        
-        <div class="card">
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label for="name"><?php esc_html_e('Nome Torneo', 'eto'); ?></label>
-                        <input type="text" class="form-control" id="name" name="name" required
-                            value="<?php echo esc_attr($form_data['name'] ?? ''); ?>">
-                    </div>
-                    
-                    <div class="col-md-6 mb-3">
-                        <label><?php esc_html_e('Formato', 'eto'); ?></label>
-                        <select class="form-control" id="format" name="format" required>
-                            <option value="single_elimination" <?php selected($form_data['format'] ?? '', 'single_elimination'); ?>>
-                                <?php esc_html_e('Eliminazione Singola', 'eto'); ?>
-                            </option>
-                            <option value="double_elimination" <?php selected($form_data['format'] ?? '', 'double_elimination'); ?>>
-                                <?php esc_html_e('Eliminazione Doppia', 'eto'); ?>
-                            </option>
-                            <option value="swiss" <?php selected($form_data['format'] ?? '', 'swiss'); ?>>
-                                <?php esc_html_e('Sistema Svizzero', 'eto'); ?>
-                            </option>
-                        </select>
-                    </div>
-                    
-                    <div class="col-md-4 mb-3">
-                        <label><?php esc_html_e('Giocatori per Team', 'eto'); ?></label>
-                        <div class="input-group">
-                            <input type="number" class="form-control" id="min_players" name="min_players" min="2" max="32" required
-                                value="<?php echo esc_attr($form_data['min_players'] ?? ''); ?>">
-                            <div class="input-group-append">
-                                <span class="input-group-text">-</span>
-                            </div>
-                            <input type="number" class="form-control" id="max_players" name="max_players" min="2" max="32" required
-                                value="<?php echo esc_attr($form_data['max_players'] ?? ''); ?>">
-                        </div>
-                    </div>
-                    
-                    <div class="col-md-4 mb-3">
-                        <label><?php esc_html_e('Team Massimi', 'eto'); ?></label>
-                        <input type="number" class="form-control" id="max_teams" name="max_teams" min="2" max="64" required
-                            value="<?php echo esc_attr($form_data['max_teams'] ?? ''); ?>">
-                    </div>
-                    
-                    <div class="col-md-4 mb-3">
-                        <label><?php esc_html_e('Tipo di Gioco', 'eto'); ?></label>
-                        <select class="form-control" id="game_type" name="game_type" required>
-                            <option value="csgo" <?php selected($form_data['game_type'] ?? '', 'csgo'); ?>>
-                                <?php esc_html_e('Counter-Strike: Global Offensive', 'eto'); ?>
-                            </option>
-                            <option value="lol" <?php selected($form_data['game_type'] ?? '', 'lol'); ?>>
-                                <?php esc_html_e('League of Legends', 'eto'); ?>
-                            </option>
-                            <option value="dota2" <?php selected($form_data['game_type'] ?? '', 'dota2'); ?>>
-                                <?php esc_html_e('Dota 2', 'eto'); ?>
-                            </option>
-                        </select>
-                    </div>
-                    
-                    <div class="col-md-6 mb-3">
-                        <label><?php esc_html_e('Data Inizio', 'eto'); ?></label>
-                        <input type="datetime-local" class="form-control" id="start_date" name="start_date" required
-                            value="<?php echo esc_attr($form_data['start_date'] ?? ''); ?>">
-                    </div>
-                    
-                    <div class="col-md-6 mb-3">
-                        <label><?php esc_html_e('Data Fine', 'eto'); ?></label>
-                        <input type="datetime-local" class="form-control" id="end_date" name="end_date" required
-                            value="<?php echo esc_attr($form_data['end_date'] ?? ''); ?>">
-                    </div>
-                    
-                    <div class="col-md-6 mb-3">
-                        <div class="form-check">
-                            <input type="checkbox" class="form-check-input" id="checkin_enabled" name="checkin_enabled"
-                                <?php checked($form_data['checkin_enabled'] ?? 0, 1); ?>>
-                            <label class="form-check-label" for="checkin_enabled">
-                                <?php esc_html_e('Abilita Check-in', 'eto'); ?>
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="col-md-6 mb-3">
-                        <div class="form-check">
-                            <input type="checkbox" class="form-check-input" id="third_place_match" name="third_place_match"
-                                <?php checked($form_data['third_place_match'] ?? 0, 1); ?>>
-                            <label class="form-check-label" for="third_place_match">
-                                <?php esc_html_e('Includi Finale 3°/4° Posto', 'eto'); ?>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="row">
-                    <div class="col-md-12">
-                        <?php submit_button(__('Crea Torneo', 'eto')); ?>
-                    </div>
-                </div>
-            </div>
-        </form>
-    </div>
-</div>
+// 6. CARICAMENTO TEMPLATE DINAMICO
+$template_path = ETO_PLUGIN_DIR . 'admin/views/create-tournament-form.php';
+if (file_exists($template_path)) {
+    include $template_path;
+} else {
+    wp_die(esc_html__('Errore nel sistema dei template', 'eto'));
+}

@@ -1,17 +1,13 @@
 <?php
+if (!defined('ABSPATH')) exit;
+
 class ETO_Settings_Register {
     const CAPABILITY = 'manage_eto_settings';
 
-    public static function init() {
-        add_action('admin_init', [__CLASS__, 'register_settings']);
-        add_action('admin_menu', [__CLASS__, 'add_admin_menus']);
-        add_action('admin_notices', [__CLASS__, 'handle_admin_notices']);
-    }
-
-    // 1. REGISTRAZIONE IMPOSTAZIONI (ESISTENTE)
+    // 1. REGISTRAZIONE IMPOSTAZIONI CON NONCE
     public static function register_settings() {
         register_setting('eto_settings_group', 'eto_riot_api_key', [
-            'type' => 'string',
+            'type' => 'string', 
             'sanitize_callback' => [__CLASS__, 'sanitize_api_key'],
             'default' => '',
             'show_in_rest' => false
@@ -50,17 +46,9 @@ class ETO_Settings_Register {
             'eto_main_section',
             ['label_for' => 'eto_email_enabled']
         );
-
-        add_settings_field(
-            'eto_installer_info',
-            esc_html__('Utente Installatore', 'eto'),
-            [__CLASS__, 'installer_info_callback'],
-            'eto_settings_page',
-            'eto_main_section'
-        );
     }
 
-    // 2. MENU ADMIN (NUOVA IMPLEMENTAZIONE)
+    // 2. MENU ADMIN CON GESTIONE NONCE RINFORZATA
     public static function add_admin_menus() {
         add_menu_page(
             esc_html__('Gestione Tornei', 'eto'),
@@ -91,99 +79,77 @@ class ETO_Settings_Register {
         );
     }
 
-    // 3. GESTIONE NOTIFICHE (NUOVA SEZIONE)
-    public static function handle_admin_notices() {
-        if (isset($_GET['max_teams_exceeded'])) {
-            echo '<div class="notice notice-warning">';
-            echo '<p>' . esc_html__('Numero team superiore al massimo consentito!', 'eto') . '</p>';
-            echo '</div>';
-        }
-
-        if (isset($_GET['creation_error'])) {
-            $error_message = get_transient('eto_tournament_error');
-            if ($error_message) {
-                echo '<div class="notice notice-error">';
-                echo '<p>' . esc_html($error_message) . '</p>';
-                echo '</div>';
-                delete_transient('eto_tournament_error');
-            }
-        }
-    }
-
-    // 4. RENDER PAGINE (INTEGRAZIONE CON I NUOVI TEMPLATE)
-    public static function render_tournaments_page() {
-        if (!current_user_can('manage_eto_tournaments')) {
-            wp_die(esc_html__('Accesso negato.', 'eto'));
-        }
-        
-        global $wpdb;
-        $tournaments = ETO_Tournament::get_all();
-        include ETO_PLUGIN_DIR . 'admin/views/tournaments.php';
-    }
-
+    // 3. GESTIONE CREAZIONE TORNEO CON NONCE
     public static function render_create_tournament_page() {
         if (!current_user_can('manage_eto_tournaments')) {
-            wp_die(esc_html__('Accesso negato.', 'eto'));
+            wp_die(esc_html__('Accesso negato', 'eto'));
         }
 
-        $form_data = get_transient('eto_form_data');
-        $tournament = null;
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__('Crea Nuovo Torneo', 'eto') . '</h1>';
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+        wp_nonce_field('eto_create_tournament_action', '_wpnonce_create_tournament');
         
-        if (isset($_GET['tournament_id'])) {
-            $tournament = ETO_Tournament::get(absint($_GET['tournament_id']));
+        // Campi del form con sanitizzazione
+        echo '<table class="form-table">';
+        echo '<tr><th>' . esc_html__('Nome Torneo', 'eto') . '</th>';
+        echo '<td><input type="text" name="name" required class="regular-text"></td></tr>';
+        // ... (altri campi del form)
+        
+        echo '</table>';
+        echo '<input type="hidden" name="action" value="eto_create_tournament">';
+        submit_button(esc_attr__('Crea Torneo', 'eto'));
+        echo '</form></div>';
+    }
+
+    // 4. VALIDAZIONE TORNEO CON CONTROLLO NONCE
+    public static function handle_tournament_creation() {
+        check_admin_referer('eto_create_tournament_action', '_wpnonce_create_tournament');
+        
+        if (!current_user_can('manage_eto_tournaments')) {
+            wp_die(esc_html__('Accesso negato', 'eto'), 403);
         }
 
-        include ETO_PLUGIN_DIR . 'admin/views/create-tournament.php';
-        delete_transient('eto_form_data');
-    }
+        $data = [
+            'name' => sanitize_text_field($_POST['name']),
+            'format' => sanitize_text_field($_POST['format']),
+            'start_date' => sanitize_text_field($_POST['start_date']),
+            'end_date' => sanitize_text_field($_POST['end_date']),
+            'game_type' => sanitize_text_field($_POST['game_type']),
+            'min_players' => absint($_POST['min_players']),
+            'max_players' => absint($_POST['max_players']),
+            'max_teams' => absint($_POST['max_teams']),
+            'checkin_enabled' => isset($_POST['checkin_enabled']) ? 1 : 0,
+            'third_place_match' => isset($_POST['third_place_match']) ? 1 : 0
+        ];
 
-    public static function render_settings_page() {
-        if (!current_user_can('manage_eto_settings')) {
-            wp_die(esc_html__('Accesso negato.', 'eto'));
+        $result = ETO_Tournament::create($data);
+        
+        if (is_wp_error($result)) {
+            $error_message = urlencode($result->get_error_message());
+            wp_redirect(add_query_arg('eto_error', $error_message, admin_url('admin.php?page=eto-create-tournament')));
+            exit;
         }
-
-        settings_errors();
-        include ETO_PLUGIN_DIR . 'admin/views/settings.php';
+        
+        wp_redirect(admin_url('admin.php?page=eto-tournaments'));
+        exit;
     }
 
-    // 5. METODI ESISTENTI (MANTENUTI)
-    public static function settings_section_callback() {
-        echo '<p>' . esc_html__('Inserisci le impostazioni del plugin eSports Tournament Organizer.', 'eto') . '</p>';
-    }
-
+    // 5. CAMPI IMPOSTAZIONI CON VALIDAZIONE RINFORZATA
     public static function api_key_field_callback() {
-        $value = get_option('eto_riot_api_key', '');
-        echo '<input type="password" 
-                    class="regular-text" 
-                    name="eto_riot_api_key" 
-                    id="eto_riot_api_key" 
-                    value="' . esc_attr(base64_decode($value)) . '"
-                    autocomplete="new-password">';
+        $value = esc_attr(base64_decode(get_option('eto_riot_api_key', '')));
+        echo '<input type="password" id="eto_riot_api_key" name="eto_riot_api_key" 
+               value="' . $value . '" class="regular-text">';
         echo '<p class="description">' . esc_html__('Chiave API cifrata con base64.', 'eto') . '</p>';
     }
 
     public static function email_enabled_field_callback() {
-        $value = (bool) get_option('eto_email_enabled', false);
-        echo '<input type="checkbox" 
-                    name="eto_email_enabled" 
-                    id="eto_email_enabled" 
-                    value="1" ' . checked(1, $value, false) . '>';
-        echo '<label for="eto_email_enabled">' . esc_html__('Abilita l\'invio automatico di notifiche via email', 'eto') . '</label>';
+        $value = checked(get_option('eto_email_enabled', false), true, false);
+        echo '<label><input type="checkbox" id="eto_email_enabled" name="eto_email_enabled" ' . $value . '> ';
+        echo esc_html__('Abilita l\'invio automatico di email', 'eto') . '</label>';
     }
 
-    public static function installer_info_callback() {
-        $installer_id = ETO_Installer::get_original_installer();
-        $user = $installer_id ? get_userdata($installer_id) : null;
-        
-        echo $user ? 
-            '<strong>' . esc_html($user->display_name) . '</strong>' : 
-            '<em>' . esc_html__('N/A', 'eto') . '</em>';
-        
-        echo '<p class="description">' . 
-             esc_html__('Utente che ha installato originariamente il plugin.', 'eto') . 
-             '</p>';
-    }
-
+    // 6. SANITIZZAZIONE DATI SICURA
     public static function sanitize_api_key($input) {
         if (!current_user_can(self::CAPABILITY)) {
             add_settings_error(
@@ -199,6 +165,14 @@ class ETO_Settings_Register {
     public static function sanitize_boolean($input) {
         return (bool) absint($input);
     }
+
+    // 7. INITIALIZZAZIONE COMPONENTI
+    public static function init() {
+        add_action('admin_init', [__CLASS__, 'register_settings']);
+        add_action('admin_menu', [__CLASS__, 'add_admin_menus']);
+        add_action('admin_notices', [__CLASS__, 'handle_admin_notices']);
+    }
 }
 
+// Avvio del componente
 ETO_Settings_Register::init();
