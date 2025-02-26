@@ -58,7 +58,7 @@ class ETO_Cron {
         } catch (Exception $e) {
             error_log('[ETO] Errore tasks orari: ' . $e->getMessage());
         }
-    } // Chiusura corretta del metodo hourly_tasks
+    } // Chiusura corretta del metodo
 
     public static function daily_cleanup() {
         global $wpdb;
@@ -90,7 +90,7 @@ class ETO_Cron {
         } catch (Exception $e) {
             error_log('[ETO] Errore pulizia giornaliera: ' . $e->getMessage());
         }
-    } // Chiusura corretta del metodo daily_cleanup
+    } // Chiusura corretta
 
     public static function daily_maintenance() {
         try {
@@ -104,7 +104,7 @@ class ETO_Cron {
         } catch (Exception $e) {
             error_log('[ETO] Errore manutenzione: ' . $e->getMessage());
         }
-    } // Chiusura corretta del metodo daily_maintenance
+    } // Chiusura corretta
 
     public static function calculate_tiebreakers_for_active() {
         global $wpdb;
@@ -118,7 +118,7 @@ class ETO_Cron {
         foreach ($active_tournaments as $tournament_id) {
             ETO_Swiss::calculate_tiebreakers(absint($tournament_id));
         }
-    }
+    } // Chiusura corretta
 
     public static function add_custom_schedules($schedules) {
         $schedules['every_6h'] = [
@@ -127,9 +127,9 @@ class ETO_Cron {
         ];
         return $schedules;
     }
-}
+} // Chiusura classe
 
-// Registra gli hook per gli eventi cron
+// Registra hook dopo la classe
 add_filter('cron_schedules', ['ETO_Cron', 'add_custom_schedules']);
 add_action('eto_hourly_tasks', ['ETO_Cron', 'hourly_tasks']);
 add_action('eto_daily_cleanup', ['ETO_Cron', 'daily_cleanup']);

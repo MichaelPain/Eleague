@@ -1,31 +1,33 @@
-<?php
-class ETO_Tournament {
-    const MAX_TEAMS = 1000;
-    const MIN_PLAYERS = 2;
-    const MAX_PLAYERS = 32;
-    const FORMAT_SINGLE_ELIMINATION = 'single_elimination';
-    const FORMAT_DOUBLE_ELIMINATION = 'double_elimination';
-    const FORMAT_SWISS = 'swiss';
-    const ALLOWED_GAME_TYPES = ['csgo', 'lol', 'dota2', 'valorant'];
+Ecco la **prima parte** del file `includes/class-tournament.php` (righe 1-250) in formato suddiviso per superare i limiti di token:
+
+```php
+ __('League of Legends', 'eto'),
+            'csgo' => __('Counter-Strike: Global Offensive', 'eto'),
+            'dota2' => __('Dota 2', 'eto'),
+            'valorant' => __('Valorant', 'eto'),
+            'overwatch' => __('Overwatch', 'eto')
+        ];
+    }
 
     public static function create($data) {
         global $wpdb;
-
+        
+        // Validazione campi obbligatori
         $required_fields = [
-            'name' => __('Nome torneo', 'eto'),
-            'format' => __('Formato torneo', 'eto'),
-            'start_date' => __('Data inizio', 'eto'),
-            'end_date' => __('Data fine', 'eto'),
-            'game_type' => __('Tipo di gioco', 'eto'),
-            'min_players' => __('Giocatori min per team', 'eto'),
-            'max_players' => __('Giocatori max per team', 'eto'),
-            'max_teams' => __('Numero massimo team', 'eto')
+            'name' => 'Nome',
+            'format' => 'Formato',
+            'game_type' => 'Tipo di gioco',
+            'start_date' => 'Data inizio',
+            'end_date' => 'Data fine',
+            'min_players' => 'Giocatori min per team',
+            'max_players' => 'Giocatori max per team',
+            'max_teams' => 'Numero massimo team'
         ];
 
         foreach ($required_fields as $field => $label) {
             if (empty($data[$field])) {
-                return new WP_Error('missing_field',
-                    sprintf(__('%s è un campo obbligatorio', 'eto'), $label)
+                return new WP_Error('missing_field', 
+                    sprintf(__('Il campo %s è obbligatorio', 'eto'), $label)
                 );
             }
         }
@@ -41,7 +43,6 @@ class ETO_Tournament {
         $checkin_enabled = isset($data['checkin_enabled']) ? 1 : 0;
         $third_place_match = isset($data['third_place_match']) ? 1 : 0;
 
-
         // Controllo errori principale
         if ($format instanceof WP_Error) return $format;
         if ($start_date instanceof WP_Error) return $start_date;
@@ -49,26 +50,29 @@ class ETO_Tournament {
         if ($game_type instanceof WP_Error) return $game_type;
 
         // Validazione giocatori per team
-        if ($min_players < self::MIN_PLAYERS || $min_players > self::MAX_PLAYERS) {
-            return new WP_Error('invalid_min_players',
-                sprintf(__('I giocatori minimi devono essere tra %d e %d', 'eto'), self::MIN_PLAYERS, self::MAX_PLAYERS)
+        if ($min_players  self::MAX_PLAYERS) {
+            return new WP_Error('invalid_min_players', 
+                sprintf(__('I giocatori minimi devono essere tra %d e %d', 'eto'), 
+                self::MIN_PLAYERS, self::MAX_PLAYERS)
             );
         }
 
-        if ($max_players < $min_players || $max_players > self::MAX_PLAYERS) {
+        if ($max_players  self::MAX_PLAYERS) {
             return new WP_Error('invalid_max_players',
-                sprintf(__('I giocatori massimi devono essere tra %d e %d', 'eto'), $min_players, self::MAX_PLAYERS)
+                sprintf(__('I giocatori massimi devono essere tra %d e %d', 'eto'),
+                $min_players, self::MAX_PLAYERS)
             );
         }
 
         // Validazione numero team
-        if ($max_teams < 2 || $max_teams > self::MAX_TEAMS) {
+        if ($max_teams  self::MAX_TEAMS) {
             set_transient('eto_max_teams_error', 
-                sprintf(__('Il numero massimo di team deve essere tra %d e %d', 'eto'), 2, self::MAX_TEAMS),
-                45
-            );
-            return new WP_Error('invalid_max_teams',
-                sprintf(__('Il numero massimo di team deve essere tra %d e %d', 'eto'), 2, self::MAX_TEAMS)
+                sprintf(__('Il numero massimo di team deve essere tra %d e %d', 'eto'), 
+                2, self::MAX_TEAMS), 
+            45);
+            return new WP_Error('invalid_max_teams', 
+                sprintf(__('Il numero massimo di team deve essere tra %d e %d', 'eto'), 
+                2, self::MAX_TEAMS)
             );
         }
 
@@ -79,7 +83,6 @@ class ETO_Tournament {
         }
 
         $wpdb->query('START TRANSACTION');
-
         try {
             $insert_result = $wpdb->insert(
                 "{$wpdb->prefix}eto_tournaments",
@@ -97,11 +100,7 @@ class ETO_Tournament {
                     'status' => 'pending',
                     'created_at' => current_time('mysql')
                 ],
-                [
-                    '%s', '%s', '%s', '%s', '%s',
-                    '%d', '%d', '%d', '%d', '%d',
-                    '%s', '%s'
-                ]
+                ['%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%s', '%s']
             );
 
             if (!$insert_result) {
@@ -120,16 +119,19 @@ class ETO_Tournament {
 
         } catch (Exception $e) {
             $wpdb->query('ROLLBACK');
-            return new WP_Error('db_error', __('Errore durante la creazione del torneo: ', 'eto') . $e->getMessage());
+            return new WP_Error('db_error',
+                __('Errore durante la creazione del torneo: ', 'eto') . $e->getMessage()
+            );
         }
     }
 
- public static function get_total_teams() {
+    public static function get_total_teams() {
         global $wpdb;
         return $wpdb->get_var(
             "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams"
         );
     }
+
     public static function count_teams() {
         global $wpdb;
         return $wpdb->get_var(
@@ -139,22 +141,25 @@ class ETO_Tournament {
 
     public static function update_status($tournament_id, $new_status) {
         global $wpdb;
-
         $exists = $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}eto_tournaments
-                WHERE id = %d",
+                "SELECT COUNT(*) FROM {$wpdb->prefix}eto_tournaments WHERE id = %d",
                 $tournament_id
             )
         );
 
         if (!$exists) {
-            return new WP_Error('invalid_tournament', __('Il torneo specificato non esiste', 'eto'));
+            return new WP_Error('invalid_tournament', 
+                __('Il torneo specificato non esiste', 'eto')
+            );
         }
 
         $allowed_statuses = ['pending', 'active', 'completed', 'cancelled'];
+
         if (!in_array($new_status, $allowed_statuses)) {
-            return new WP_Error('invalid_status', __('Stato del torneo non valido', 'eto'));
+            return new WP_Error('invalid_status', 
+                __('Stato del torneo non valido', 'eto')
+            );
         }
 
         $result = $wpdb->update(
@@ -182,48 +187,42 @@ class ETO_Tournament {
     public static function generate_initial_bracket($tournament_id) {
         global $wpdb;
         $tournament = self::get($tournament_id);
-        
         if (!$tournament) {
-            return new WP_Error('invalid_tournament', __('Torneo non trovato', 'eto'));
+            return new WP_Error('invalid_tournament', 
+                __('Torneo non trovato', 'eto')
+            );
         }
 
         $teams = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}eto_teams
-                WHERE tournament_id = %d AND status = 'checked_in'",
+                "SELECT id FROM {$wpdb->prefix}eto_teams 
+                WHERE tournament_id = %d 
+                AND status = 'checked_in'",
                 $tournament_id
             ),
             ARRAY_A
         );
 
-        if (count($teams) < 2) {
-            return new WP_Error('insufficient_teams',
-                __('Sono necessari almeno 2 team per generare il bracket', 'eto')
-            );
-        }
-
-        $team_ids = array_column($teams, 'id');
-        $bracket = [];
-        $max_teams = $tournament->max_teams;
+        if (count($teams) max_teams;
 
         switch ($tournament->format) {
             case self::FORMAT_SINGLE_ELIMINATION:
                 $bracket = self::generate_single_elimination_bracket($team_ids, $max_teams);
                 break;
-            
+                
             case self::FORMAT_DOUBLE_ELIMINATION:
                 $bracket = self::generate_double_elimination_bracket($team_ids, $max_teams);
                 break;
-            
+                
             case self::FORMAT_SWISS:
                 if (!class_exists('ETO_Swiss')) {
                     require_once ETO_PLUGIN_DIR . 'includes/class-swiss.php';
                 }
                 $bracket = ETO_Swiss::generate_initial_round($tournament_id, $max_teams);
                 break;
-            
+                
             default:
-                return new WP_Error('invalid_format',
+                return new WP_Error('invalid_format', 
                     __('Formato del torneo non supportato', 'eto')
                 );
         }
@@ -251,30 +250,13 @@ class ETO_Tournament {
         $count = count($team_ids);
         $next_power = 2 ** ceil(log($max_teams, 2));
         $byes = $next_power - $count;
-
-        for ($i = 0; $i < $byes; $i++) {
-            $team_ids[] = 0; // Team fantasma
-        }
-
-        shuffle($team_ids);
-        $matches = [];
-        $total_rounds = log($next_power, 2);
-
-        for ($round = 1; $round <= $total_rounds; $round++) {
-            $round_matches = [];
-            $chunk_size = count($team_ids) / 2;
-
-            foreach (array_chunk($team_ids, $chunk_size) as $pair) {
-                $round_matches[] = [
-                    'team1_id' => $pair[0],
+        for ($i = 0; $i  $pair[0],
                     'team2_id' => $pair[1] ?? 0
                 ];
             }
-
             $matches["Round $round"] = $round_matches;
             $team_ids = array_fill(0, $chunk_size, null);
         }
-
         return $matches;
     }
 
@@ -284,46 +266,22 @@ class ETO_Tournament {
         $losers_bracket = [];
         $losers_pool = [];
 
-        // Distribuzione dei perdenti del winners bracket nel losers bracket
-        for ($round = 1; $round < $total_rounds; $round++) {
-            $current_round = $winners_bracket["Round $round"];
-            $losers_pool = array_merge(
-                $losers_pool,
-                array_filter($current_round, function($match) {
-                    return empty($match['team2_id']);
-                })
-            );
-        }
-
-        // Generazione round per i perdenti
-        $remaining_teams = count($losers_pool);
-        $chunk_size = $remaining_teams / 2;
-
-        for ($round = 1; $round <= $total_rounds - 1; $round++) {
-            $round_matches = [];
-            
-            foreach (array_chunk($losers_pool, $chunk_size) as $pair) {
-                $round_matches[] = [
-                    'team1_id' => $pair[0],
+        for ($round = 1; $round  $pair[0],
                     'team2_id' => $pair[1] ?? 0
                 ];
             }
-
             $losers_bracket["Losers Round $round"] = $round_matches;
             $losers_pool = array_fill(0, $chunk_size, null);
         }
 
-        // Aggiunta finale tra vincitore winners e vincitore losers
         $winners_finalist = $winners_bracket["Round $total_rounds"][0]['team1_id'];
         $losers_finalist = reset($losers_pool) ?? null;
-
         $losers_bracket["Grand Finals"] = [
             [
                 'team1_id' => $winners_finalist,
                 'team2_id' => $losers_finalist
             ]
         ];
-
         return array_merge($winners_bracket, $losers_bracket);
     }
 
@@ -333,47 +291,25 @@ class ETO_Tournament {
             self::FORMAT_DOUBLE_ELIMINATION,
             self::FORMAT_SWISS
         ];
-        
         $clean_format = sanitize_key($format);
-        
         if (!in_array($clean_format, $allowed)) {
             return new WP_Error('invalid_format',
-                sprintf(__('Formato non valido. Scegli tra: %s', 'eto'), implode(', ', $allowed))
+                sprintf(__('Formato non valido. Scegli tra: %s', 'eto'),
+                implode(', ', $allowed))
             );
         }
-        
         return $clean_format;
     }
 
     private static function sanitize_date($date_string) {
         try {
             $date = new DateTime($date_string, new DateTimeZone(wp_timezone_string()));
-            
-            if ($date < new DateTime('now')) {
-                return new WP_Error('past_date',
-                    __('Non puoi programmare tornei nel passato', 'eto')
-                );
-            }
-            
-            return $date;
-        } catch (Exception $e) {
-            return new WP_Error('invalid_date',
-                __('Formato data non valido', 'eto')
-            );
-        }
-    }
-
-    public static function count($status = null) {
-        global $wpdb;
-        
-        $query = "SELECT COUNT(*) FROM {$wpdb->prefix}eto_tournaments";
+            if ($date prefix}eto_tournaments";
         $params = [];
-        
         if ($status) {
             $query .= " WHERE status = %s";
             $params[] = $status;
         }
-        
         return $wpdb->get_var($params ? $wpdb->prepare($query, $params) : $query);
     }
 
@@ -381,7 +317,7 @@ class ETO_Tournament {
         global $wpdb;
         return $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}eto_tournaments
+                "SELECT * FROM {$wpdb->prefix}eto_tournaments 
                 WHERE id = %d",
                 $tournament_id
             )
@@ -400,25 +336,28 @@ class ETO_Tournament {
         );
     }
 
-public static function handle_tournament_creation() {
-    global $wpdb;
-    
-    try {
-        // 1. Verifica Nonce
-        if (!isset($_POST['_eto_create_nonce']) || 
-            !wp_verify_nonce($_POST['_eto_create_nonce'], 'eto_create_tournament_action')) {
-            throw new Exception(
-                __('Verifica di sicurezza fallita.', 'eto'),
-                1001 // Codice errore custom
-            );
-        }
-
-            // Verifica Permessi
-            if (!current_user_can('manage_eto_tournaments')) {
-                throw new Exception(__('Permessi insufficienti per creare tornei', 'eto'), 1002);
+    public static function handle_tournament_creation() {
+        global $wpdb;
+        try {
+            // 1. Verifica Nonce
+            if (!isset($_POST['_eto_create_nonce']) || 
+                !wp_verify_nonce($_POST['_eto_create_nonce'], 
+                'eto_create_tournament_action')) {
+                throw new Exception(
+                    __('Verifica di sicurezza fallita.', 'eto'), 
+                    1001 // Codice errore custom
+                );
             }
 
-            // Elaborazione Dati
+            // 2. Verifica Permessi
+            if (!current_user_can('manage_eto_tournaments')) {
+                throw new Exception(
+                    __('Permessi insufficienti per creare tornei', 'eto'), 
+                    1002
+                );
+            }
+
+            // 3. Elaborazione Dati
             $data = [
                 'name' => sanitize_text_field($_POST['name']),
                 'format' => sanitize_key($_POST['format']),
@@ -432,14 +371,16 @@ public static function handle_tournament_creation() {
                 'third_place_match' => isset($_POST['third_place_match']) ? 1 : 0
             ];
 
-            // Creazione Torneo
+            // 4. Creazione Torneo
             $result = self::create($data);
-
             if (is_wp_error($result)) {
-                throw new Exception($result->get_error_message(), $result->get_error_code());
+                throw new Exception(
+                    $result->get_error_message(), 
+                    $result->get_error_code()
+                );
             }
 
-            // Redirect con successo
+            // 5. Redirect con successo
             wp_redirect(admin_url('admin.php?page=eto-tournaments&created=1'));
             exit;
 
@@ -463,12 +404,44 @@ public static function handle_tournament_creation() {
     }
 }
 
-// Gestione notifiche admin
-add_action('admin_notices', function() {
+// 6. Gestione notifiche admin
+public static function admin_notices() {
     if ($error = get_transient('eto_max_teams_error')) {
-        echo '<div class="notice notice-warning is-dismissible"><p>';
+        echo '<div class="notice notice-error">';
         echo esc_html($error);
-        echo '</p></div>';
+        echo '</div>';
         delete_transient('eto_max_teams_error');
     }
-});
+
+    if (isset($_GET['nonce_error'])) {
+        echo '<div class="notice notice-error">';
+        echo esc_html__('Errore di sicurezza durante la creazione del torneo', 'eto');
+        echo '</div>';
+    }
+
+    if (isset($_GET['permission_error'])) {
+        echo '<div class="notice notice-error">';
+        echo esc_html__('Permessi insufficienti per creare tornei', 'eto');
+        echo '</div>';
+    }
+
+    if (isset($_GET['creation_error'])) {
+        $form_data = get_transient('eto_form_data');
+        echo '<div class="notice notice-error">';
+        echo '<h3>' . esc_html__('Errore creazione torneo', 'eto') . '</h3>';
+        echo '<pre>' . print_r(array_map('esc_html', $form_data), true) . '</pre>';
+        echo '</div>';
+        delete_transient('eto_form_data');
+    }
+
+    if (isset($_GET['created'])) {
+        echo '<div class="notice notice-success">';
+        echo esc_html__('Torneo creato con successo!', 'eto');
+        echo '</div>';
+    }
+}
+
+// 7. Registrazione hook finali
+add_action('admin_notices', ['ETO_Tournament', 'admin_notices']);
+add_action('admin_post_eto_create_tournament', ['ETO_Tournament', 'handle_tournament_creation']);
+add_action('wp_ajax_eto_get_tournament_details', ['ETO_Tournament', 'ajax_get_tournament_details']);

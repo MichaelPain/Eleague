@@ -1,32 +1,32 @@
 <?php
+if (!defined('ABSPATH')) exit;
+
 class ETO_Swiss {
-    const BYE_TEAM_ID = 0;
-    const MAX_ROUNDS = 10; // Limite massimo di sicurezza
+    const MAX_ROUNDS = 8;
     const MIN_TEAMS = 4;
-    const MAX_REMATCH_ATTEMPTS = 3; // Tentativi massimi per evitare rematch
+    const BYE_TEAM_ID = 0;
+    const MAX_REMATCH_ATTEMPTS = 3;
 
     public static function generate_initial_round($tournament_id) {
         global $wpdb;
-
         try {
             error_log("[ETO] Generazione round iniziale Swiss per torneo $tournament_id");
-
-            $tournament = ETO_Tournament::get($tournament_id);
-            if (!$tournament || $tournament->format !== 'swiss') {
+            
+            if (ETO_Tournament::get(absint($tournament_id))->format !== 'swiss') {
                 throw new Exception(__('Torneo Swiss non valido', 'eto'));
             }
 
-            // Verifica limite massimo round
-            if (self::get_current_round($tournament_id) >= self::MAX_ROUNDS) {
+            $current_round = self::get_current_round($tournament_id);
+            if ($current_round >= self::MAX_ROUNDS) {
                 throw new Exception(__('Raggiunto il numero massimo di round', 'eto'));
             }
 
             $teams = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT id, wins, points_diff 
-                    FROM {$wpdb->prefix}eto_teams 
-                    WHERE tournament_id = %d 
-                    AND status = 'checked_in' 
+                    "SELECT id, wins, points_diff
+                    FROM {$wpdb->prefix}eto_teams
+                    WHERE tournament_id = %d
+                    AND status = 'checked_in'
                     ORDER BY RAND()",
                     $tournament_id
                 ),
@@ -46,11 +46,10 @@ class ETO_Swiss {
 
             $matches = [];
             $total_teams = count($teams);
-            
+
             for ($i = 0; $i < $total_teams; $i += 2) {
                 $team1 = $teams[$i];
                 $team2 = $teams[$i + 1] ?? ['id' => self::BYE_TEAM_ID];
-
                 $matches[] = [
                     'team1_id' => $team1['id'],
                     'team2_id' => $team2['id']
@@ -58,10 +57,9 @@ class ETO_Swiss {
             }
 
             $wpdb->query('START TRANSACTION');
-            
+
             foreach ($matches as $match) {
                 $status = ($match['team2_id'] === self::BYE_TEAM_ID) ? 'completed' : 'pending';
-                
                 $wpdb->insert(
                     "{$wpdb->prefix}eto_matches",
                     [
@@ -84,7 +82,6 @@ class ETO_Swiss {
             $wpdb->query('COMMIT');
             error_log("[ETO] Creati " . count($matches) . " match per il round iniziale");
             return $matches;
-
         } catch (Exception $e) {
             $wpdb->query('ROLLBACK');
             error_log("[ETO] Errore generazione round: " . $e->getMessage());
@@ -94,21 +91,19 @@ class ETO_Swiss {
 
     public static function generate_next_round($tournament_id) {
         global $wpdb;
-
         try {
             error_log("[ETO] Generazione nuovo round Swiss per torneo $tournament_id");
-
-            // Verifica limite massimo round
             $current_round = self::get_current_round($tournament_id);
+
             if ($current_round >= self::MAX_ROUNDS) {
                 throw new Exception(__('Raggiunto il numero massimo di round', 'eto'));
             }
 
             $standings = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT id, wins, points_diff 
-                    FROM {$wpdb->prefix}eto_teams 
-                    WHERE tournament_id = %d 
+                    "SELECT id, wins, points_diff
+                    FROM {$wpdb->prefix}eto_teams
+                    WHERE tournament_id = %d
                     ORDER BY wins DESC, points_diff DESC",
                     $tournament_id
                 ),
@@ -143,7 +138,7 @@ class ETO_Swiss {
                 }
 
                 if (!$found_match) {
-                    // Fallback: accoppia con il prossimo disponibile
+                    error_log("[ETO] Cerco accoppiamento alternativo per team {$team1['id']}");
                     for ($j = $i + 1; $j < $total_teams; $j++) {
                         if (!in_array($standings[$j]['id'], $used_teams)) {
                             $team2 = $standings[$j];
@@ -163,8 +158,8 @@ class ETO_Swiss {
             }
 
             $new_round = $current_round + 1;
-            
             $wpdb->query('START TRANSACTION');
+
             foreach ($matches as $match) {
                 $wpdb->insert(
                     "{$wpdb->prefix}eto_matches",
@@ -179,11 +174,10 @@ class ETO_Swiss {
                     ['%d', '%s', '%d', '%d', '%s', '%s']
                 );
             }
-            $wpdb->query('COMMIT');
 
+            $wpdb->query('COMMIT');
             error_log("[ETO] Creato round $new_round con " . count($matches) . " partite");
             return $matches;
-
         } catch (Exception $e) {
             $wpdb->query('ROLLBACK');
             error_log("[ETO] Errore generazione round: " . $e->getMessage());
@@ -193,11 +187,10 @@ class ETO_Swiss {
 
     private static function have_played_before($team1_id, $team2_id, $tournament_id) {
         global $wpdb;
-
         return $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}eto_matches 
-                WHERE tournament_id = %d 
+                "SELECT COUNT(*) FROM {$wpdb->prefix}eto_matches
+                WHERE tournament_id = %d
                 AND (
                     (team1_id = %d AND team2_id = %d) OR
                     (team1_id = %d AND team2_id = %d)
@@ -209,12 +202,28 @@ class ETO_Swiss {
         ) > 0;
     }
 
-    public static function calculate_tiebreakers($tournament_id) {
+    public static function calculate_tiebreakers_for_active() {
         global $wpdb;
 
+        $active_tournaments = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}eto_tournaments 
+                WHERE status = %s AND format = %s",
+                'active',
+                'swiss'
+            )
+        );
+
+        foreach ($active_tournaments as $tournament_id) {
+            self::calculate_tiebreakers(absint($tournament_id));
+        }
+    }
+
+    public static function calculate_tiebreakers($tournament_id) {
+        global $wpdb;
         try {
             error_log("[ETO] Calcolo tiebreaker per torneo $tournament_id");
-
+            
             $wpdb->query(
                 $wpdb->prepare(
                     "UPDATE {$wpdb->prefix}eto_teams t
@@ -225,9 +234,7 @@ class ETO_Swiss {
                             FROM {$wpdb->prefix}eto_matches m
                             JOIN {$wpdb->prefix}eto_teams t2 ON m.team2_id = t2.id
                             WHERE m.tournament_id = %d
-                            
                             UNION ALL
-                            
                             SELECT m.team2_id AS team_id, t1.points_diff AS points
                             FROM {$wpdb->prefix}eto_matches m
                             JOIN {$wpdb->prefix}eto_teams t1 ON m.team1_id = t1.id
@@ -245,7 +252,6 @@ class ETO_Swiss {
 
             error_log("[ETO] Tiebreaker calcolati con successo");
             return true;
-
         } catch (Exception $e) {
             error_log("[ETO] Errore calcolo tiebreaker: " . $e->getMessage());
             return new WP_Error('tiebreaker_error', $e->getMessage());
@@ -254,10 +260,9 @@ class ETO_Swiss {
 
     private static function get_current_round($tournament_id) {
         global $wpdb;
-        
         return (int)$wpdb->get_var(
             $wpdb->prepare(
-                "SELECT MAX(round) FROM {$wpdb->prefix}eto_matches 
+                "SELECT MAX(round) FROM {$wpdb->prefix}eto_matches
                 WHERE tournament_id = %d",
                 $tournament_id
             )
