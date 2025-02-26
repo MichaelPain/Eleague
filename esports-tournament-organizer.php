@@ -1,95 +1,22 @@
 <?php
-/**
- * Plugin Name: Esports Tournament Organizer
- * Description: Organizza tornei multigiocatore con sistema di ranking
- * Version: 3.0.0
- * Author: Fury Gaming
- */
+/*
+Plugin Name: ETO - Esports Tournament Organizer
+Description: Organizza tornei e competizioni gaming con vari formati
+Version: 1.6.0
+Author: Fury Gaming Team
+Author URI: https://www.furygaming.net
+Text Domain: eto
+*/
 
 if (!defined('ABSPATH')) exit;
 
-// ==================================================
-// 1. DEFINIZIONE COSTANTI (PRIMA DI QUALSIASI INCLUSIONE)
-// ==================================================
-if (!defined('ETO_PLUGIN_DIR')) {
-    define('ETO_PLUGIN_DIR', plugin_dir_path(__FILE__));
-}
+// 1. DEFINIZIONE COSTANTI
+define('ETO_DEBUG', true);
+define('ETO_PLUGIN_DIR', untrailingslashit(WP_PLUGIN_DIR . '/' . dirname(plugin_basename(__FILE__))));
+define('ETO_DEBUG_LOG', ETO_PLUGIN_DIR . '/logs/debug.log');
 
-if (!defined('ETO_PLUGIN_URL')) {
-    define('ETO_PLUGIN_URL', plugin_dir_url(__FILE__));
-}
-
-if (!defined('ETO_DEBUG_LOG')) {
-    define('ETO_DEBUG_LOG', WP_CONTENT_DIR . '/debug-eto.log');
-}
-
-if (!defined('ETO_DEBUG_DISPLAY')) {
-    define('ETO_DEBUG_DISPLAY', false);
-}
-
-if (!defined('ETO_DB_VERSION')) {
-    define('ETO_DB_VERSION', '3.0.0');
-}
-
-// ==================================================
-// 2. INCLUDI FILE CORE CON VERIFICA INTEGRITÀ
-// ==================================================
-$core_files = [
-    // Database e migrazioni
-    'includes/class-database.php',
-    
-    // Sistema di base
-    'includes/class-user-roles.php',
-    'includes/class-activator.php',
-    'includes/class-deactivator.php',
-    'includes/class-uninstaller.php',
-    
-    // Logica core
-    'includes/class-tournament.php',
-    'includes/class-team.php',
-    'includes/class-match.php',
-    'includes/class-swiss.php',
-    
-    // Sistema
-    'includes/class-cron.php',
-    'includes/class-audit-log.php',
-    'includes/class-ajax-handler.php',
-    
-    // Integrazioni
-    'includes/class-riot-api.php',
-    'includes/class-emails.php',
-    
-    // Frontend
-    'public/shortcodes.php',
-    'public/class-checkin.php',
-    
-    // Admin
-    'admin/admin-pages.php',
-    'admin/class-settings-register.php'
-];
-
-foreach ($core_files as $file) {
-    $path = ETO_PLUGIN_DIR . $file;
-    
-    if (!file_exists($path)) {
-        add_action('admin_notices', function() use ($file) {
-            echo '<div class="error notice">';
-            printf(
-                esc_html__('File core mancante: %s. Reinstalla il plugin.', 'eto'), 
-                '<code>' . esc_html($file) . '</code>'
-            );
-            echo '</div>';
-        });
-        return;
-    }
-    
-    require_once $path;
-}
-
-// ==================================================
-// 3. VERIFICA PERMESSI FILE SYSTEM
-// ==================================================
-$required = [
+// 2. VERIFICA PERMESSI FILE SYSTEM
+$required_perms = [
     'directories' => [
         ETO_PLUGIN_DIR . 'logs/' => 0755,
         ETO_PLUGIN_DIR . 'uploads/' => 0755
@@ -100,140 +27,137 @@ $required = [
     ]
 ];
 
-foreach ($required['directories'] as $path => $expected) {
-    if (file_exists($path)) {
-        $current = fileperms($path) & 0777;
-        if ($current !== $expected) {
-            add_action('admin_notices', function() use ($path, $expected, $current) {
-                echo '<div class="error notice">';
-                printf(
-                    esc_html__('Permessi directory non corretti: %s (Attuali: %o, Richiesti: %o)', 'eto'), 
-                    esc_html($path), 
-                    $current, 
-                    $expected
-                );
-                echo '</div>';
-            });
-        }
-    } else {
-        wp_mkdir_p($path);
-        chmod($path, $expected);
-    }
-}
-
-foreach ($required['files'] as $file => $expected) {
-    if (!file_exists($file)) {
-        add_action('admin_notices', function() use ($file) {
-            echo '<div class="error notice">';
-            printf(
-                esc_html__('Errore critico: File %s mancante. Reinstalla il plugin.', 'eto'), 
-                '<code>' . esc_html(basename($file)) . '</code>'
-            );
+foreach ($required_perms['directories'] as $path => $perm) {
+    if (!is_dir($path)) {
+        add_action('admin_notices', function() use ($path) {
+            echo '<div class="notice notice-error">';
+            echo '<p>' . sprintf(esc_html__('Directory non creata: %s', 'eto'), esc_html($path)) . '</p>';
             echo '</div>';
         });
-    } elseif (fileperms($file) !== $expected) {
-        chmod($file, $expected);
+    } else if ((fileperms($path) & 0777) !== $perm) {
+        add_action('admin_notices', function() use ($path, $perm) {
+            echo '<div class="notice notice-error">';
+            echo '<p>' . sprintf(esc_html__('Permesso directory errato: %o per %s', 'eto'), $perm, esc_html($path)) . '</p>';
+            echo '</div>';
+        });
     }
 }
 
-// ==================================================
+foreach ($required_perms['files'] as $path => $perm) {
+    if (!file_exists($path)) {
+        add_action('admin_notices', function() use ($path) {
+            echo '<div class="notice notice-error">';
+            echo '<p>' . sprintf(esc_html__('File non trovato: %s', 'eto'), esc_html($path)) . '</p>';
+            echo '</div>';
+        });
+    } else if ((fileperms($path) & 0777) !== $perm) {
+        add_action('admin_notices', function() use ($path, $perm) {
+            echo '<div class="notice notice-error">';
+            echo '<p>' . sprintf(esc_html__('Permesso file errato: %o per %s', 'eto'), $perm, esc_html($path)) . '</p>';
+            echo '</div>';
+        });
+    }
+}
+
+// 3. INCLUSIONI CORE CON VERIFICA
+$core_files = [
+    'includes/config.php',
+    'includes/utilities.php',
+    'admin/admin-pages.php',
+    'public/shortcodes.php'
+];
+
+foreach ($core_files as $file) {
+    $full_path = plugin_dir_path(__FILE__) . $file;
+    if (!file_exists($full_path)) {
+        add_action('admin_notices', function() use ($file) {
+            echo '<div class="notice notice-error">';
+            echo '<p>' . sprintf(esc_html__('File core mancante: %s', 'eto'), esc_html($file)) . '</p>';
+            echo '</div>';
+        });
+    } else {
+        require_once $full_path;
+    }
+}
+
 // 4. GESTIONE ERRORI TORNEO
-// ==================================================
 add_action('admin_notices', function() {
-    if (isset($_GET['eto_error']) && current_user_can('manage_options')) {
+    if (isset($_GET['tournament_error'])) {
         echo '<div class="notice notice-error">';
-        echo '<p>' . esc_html(urldecode(sanitize_text_field($_GET['eto_error']))) . '</p>';
-        echo '<p>' . esc_html__('Controlla il log errori per maggiori dettagli.', 'eto') . '</p>';
+        echo '<p>' . esc_html(__('Errore durante la creazione del torneo', 'eto')) . '</p>';
         echo '</div>';
     }
 });
 
-// ==================================================
-// 5. HOOK SYSTEM (COMPLETA)
-// ==================================================
-add_action('admin_post_eto_create_tournament', ['ETO_Tournament', 'handle_tournament_creation']);
-add_action('admin_post_nopriv_eto_create_tournament', function() {
-    wp_die(esc_html__('Accesso non autorizzato', 'eto'), 403);
-});
-
-register_activation_hook(__FILE__, ['ETO_Activator', 'handle_activation']);
-register_deactivation_hook(__FILE__, ['ETO_Deactivator', 'handle_deactivation']);
-register_uninstall_hook(__FILE__, ['ETO_Uninstaller', 'handle_uninstall']);
-
-// ==================================================
-// 6. INIZIALIZZAZIONE COMPONENTI (DETTAGLIATA)
-// ==================================================
-add_action('plugins_loaded', function() {
-    load_plugin_textdomain('eto', false, dirname(plugin_basename(__FILE__)) . '/languages/');
-    
-    // Aggiornamento database
-    if (version_compare(get_option('eto_db_version', '1.0.0'), ETO_DB_VERSION, '<')) {
-        ETO_Database::maybe_update_db();
-    }
-    
-    // Inizializzazione componenti
-    ETO_Settings_Register::init();
-    ETO_Shortcodes::init();
+// 5. HOOK SYSTEM COMPLETO
+add_action('init', function() {
+    ETO_Activator::check_dependencies();
     ETO_Cron::schedule_events();
+    ETO_Multisite::init();
+    ETO_WPCLI::register_commands();
+    ETO_Shortcodes::init();
+    ETO_Emails::init();
+});
+
+// 6. INIZIALIZZAZIONE COMPONENTI
+add_action('plugins_loaded', function() {
+    // Verifica classi essenziali
+    $required_classes = [
+        'ETO_Tournament',
+        'ETO_Swiss',
+        'ETO_Team',
+        'ETO_Match',
+        'ETO_Emails'
+    ];
     
-    // Supporto multisito
-    if (is_multisite()) {
-        ETO_Multisite::init();
+    foreach ($required_classes as $class) {
+        if (!class_exists($class)) {
+            add_action('admin_notices', function() use ($class) {
+                echo '<div class="notice notice-error">';
+                echo '<p>' . sprintf(esc_html__('Classe mancante: %s', 'eto'), esc_html($class)) . '</p>';
+                echo '</div>';
+            });
+        }
     }
 });
 
-// ==================================================
-// 7. GESTIONE DEBUG AVANZATA
-// ==================================================
-if (defined('WP_DEBUG') && WP_DEBUG) {
-    ini_set('display_errors', ETO_DEBUG_DISPLAY ? '1' : '0');
-    ini_set('log_errors', '1');
-    ini_set('error_log', ETO_DEBUG_LOG);
-    
+// 7. DEBUG ADVANCED
+if (ETO_DEBUG) {
     add_action('admin_notices', function() {
-        if (current_user_can('manage_options')) {
-            echo '<div class="notice notice-info">';
-            printf(
-                esc_html__('Debug attivo. Log errori: %s', 'eto'), 
-                '<code>' . esc_html(ETO_DEBUG_LOG) . '</code>'
-            );
-            echo '</div>';
-        }
+        error_log('[ETO] Debug mode enabled');
     });
 }
 
-// ==================================================
-// 8. AVVISO TEAM MASSIMO (REVISIONATO)
-// ==================================================
+// 8. AVVISO TEAM MASSIMO
 add_action('admin_notices', function() {
-    if (current_user_can('manage_eto_tournaments')) {
-        $current_teams = ETO_Tournament::get_total_teams();
-        $max_teams = ETO_Tournament::MAX_TEAMS;
-        
-        if ($current_teams > $max_teams) {
-            echo '<div class="notice notice-warning">';
-            printf(
-                esc_html__('Avviso: Numero team superiore al massimo consentito! (%d/%d)', 'eto'),
-                $current_teams,
-                $max_teams
-            );
-            echo '</div>';
-        }
+    if (ETO_Tournament::get_total_teams() >= ETO_Tournament::MAX_TEAMS) {
+        echo '<div class="notice notice-warning">';
+        echo '<p>' . esc_html(__('Raggiunto il numero massimo di team', 'eto')) . '</p>';
+        echo '</div>';
     }
 });
 
-// ==================================================
 // 9. INTEGRAZIONE WP-CLI
-// ==================================================
-if (defined('WP_CLI') && WP_CLI) {
-    require_once ETO_PLUGIN_DIR . 'includes/class-wp-cli.php';
-    WP_CLI::add_command('eto', 'ETO_WPCLI');
-}
+add_action('admin_init', function() {
+    if (class_exists('WP_CLI')) {
+        ETO_WPCLI::register_commands();
+    }
+});
 
-// ==================================================
-// 10. SUPPORTO MULTISITO (COMPLETO)
-// ==================================================
-if (is_multisite()) {
-    add_action('wpmu_new_blog', ['ETO_Multisite', 'activate_new_site']);
-    add_filter('network_admin_plugin_action_links', ['ETO_Multisite', 'network_plugin_links']);
-}
+// 10. SUPPORTO MULTISITO
+add_action('network_admin_edit-site', function($site_id) {
+    ETO_Multisite::network_site_settings($site_id);
+});
+
+add_action('admin_menu', function() {
+    add_menu_page(
+        'Multisite Settings',
+        'Multisite',
+        'manage_network',
+        'eto-multisite',
+        function() {
+            require_once ETO_PLUGIN_DIR . '/includes/class-multisite.php';
+            ETO_Multisite::admin_page();
+        }
+    );
+});
