@@ -1,6 +1,8 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
+if (!class_exists('ETO_Settings_Register')) {
+
 class ETO_Settings_Register {
     const CAPABILITY = 'manage_eto_settings';
 
@@ -65,14 +67,11 @@ class ETO_Settings_Register {
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('Impostazioni del Plugin', 'eto'); ?></h1>
-            
-            <?php settings_errors(); ?>
-            
             <form method="post" action="options.php">
-                <?php
+                <?php 
                 settings_fields('eto_settings_group');
                 do_settings_sections('eto_settings_page');
-                submit_button();
+                submit_button(esc_attr__('Salva Impostazioni', 'eto'));
                 ?>
             </form>
         </div>
@@ -91,8 +90,8 @@ class ETO_Settings_Register {
     }
 
     public static function email_enabled_field_callback() {
-        $value = checked(get_option('eto_email_enabled', false), true, false);
-        echo '<label><input type="checkbox" id="eto_email_enabled" name="eto_email_enabled" ' . $value . '> ';
+        $checked = checked(get_option('eto_email_enabled', false), true, false);
+        echo '<label><input type="checkbox" id="eto_email_enabled" name="eto_email_enabled" ' . $checked . '> ';
         echo esc_html__('Abilita l\'invio automatico di email', 'eto') . '</label>';
     }
 
@@ -112,10 +111,15 @@ class ETO_Settings_Register {
         return (bool) absint($input);
     }
 
-    public static function handle_notices() {
-        if (isset($_GET['settings-updated']) && $_GET['settings-updated'] === 'true') {
-            echo '<div class="notice notice-success">';
-            echo '<p>' . esc_html__('Impostazioni aggiornate con successo!', 'eto') . '</p>';
+    public static function handle_admin_notices() {
+        if (isset($_GET['settings-updated'])) {
+            $message = $_GET['settings-updated'] ? 
+                esc_html__('Impostazioni aggiornate con successo!', 'eto') : 
+                esc_html__('Errore durante il salvataggio!', 'eto');
+            
+            $type = $_GET['settings-updated'] ? 'success' : 'error';
+            echo '<div class="notice notice-' . $type . '">';
+            echo '<p>' . $message . '</p>';
             echo '</div>';
         }
     }
@@ -123,9 +127,10 @@ class ETO_Settings_Register {
     public static function init() {
         add_action('admin_init', [__CLASS__, 'register_settings']);
         add_action('admin_menu', [__CLASS__, 'add_admin_menus']);
-        add_action('admin_notices', [__CLASS__, 'handle_notices']);
+        add_action('admin_notices', [__CLASS__, 'handle_admin_notices']);
     }
 }
 
-// Inizializzazione della classe
 ETO_Settings_Register::init();
+
+} // Fine controllo class_exists
