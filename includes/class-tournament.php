@@ -317,6 +317,12 @@ class ETO_Tournament {
             );
         }
     }
+public static function get_total_teams() {
+    global $wpdb;
+    return $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}eto_teams WHERE status != 'deleted'"
+    );
+}
 
     public static function count($status = null) {
         global $wpdb;

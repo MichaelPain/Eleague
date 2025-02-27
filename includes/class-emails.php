@@ -21,6 +21,12 @@ class ETO_Emails {
         return sanitize_email($email);
     }
 
+    public static function init() {
+        add_action('eto_send_privilege_notification', [self::class, 'send_privilege_notification'], 10, 1);
+        add_action('eto_send_checkin_reminder', [self::class, 'send_checkin_reminder'], 10, 2);
+        add_action('eto_send_result_confirmation', [self::class, 'send_result_confirmation'], 10, 2);
+    }
+
     public static function send_privilege_notification($user_id) {
         try {
             self::initialize_headers();
