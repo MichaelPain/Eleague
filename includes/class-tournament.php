@@ -413,66 +413,39 @@ class ETO_Tournament {
             exit;
         }
     }
-    public static function handle_tournament_creation() {
-        global $wpdb;
-        try {
-            // 1. Verifica Nonce
-            if (!isset($_POST['_eto_create_nonce']) || 
-                !wp_verify_nonce($_POST['_eto_create_nonce'], 'eto_create_tournament_action')) {
-                throw new Exception(
-                    esc_html__('Verifica di sicurezza fallita.', 'eto'), 
-                    1001
-                );
-            }
 
-            // 2. Verifica Permessi
-            if (!current_user_can('manage_eto_tournaments')) {
-                throw new Exception(
-                    esc_html__('Permessi insufficienti per creare tornei', 'eto'), 
-                    1002
-                );
-            }
-
-            // 3. Elaborazione Dati
-            $data = [
-                'name' => sanitize_text_field($_POST['name']),
-                'format' => sanitize_key($_POST['format']),
-                'min_players' => absint($_POST['min_players']),
-                'max_players' => absint($_POST['max_players']),
-                'max_teams' => absint($_POST['max_teams']),
-                'start_date' => sanitize_text_field($_POST['start_date']),
-                'end_date' => sanitize_text_field($_POST['end_date']),
-                'game_type' => sanitize_key($_POST['game_type']),
-                'checkin_enabled' => isset($_POST['checkin_enabled']) ? 1 : 0,
-                'third_place_match' => isset($_POST['third_place_match']) ? 1 : 0
-            ];
-
-            // 4. Creazione Torneo
-            $result = self::create($data);
-            if (is_wp_error($result)) {
-                throw new Exception(
-                    $result->get_error_message(), 
-                    $result->get_error_code()
-                );
-            }
-
-            // 5. Redirect con successo
-            wp_redirect(admin_url('admin.php?page=eto-tournaments&created=1'));
-            exit;
-
-        } catch (Exception $e) {
-            set_transient('eto_form_data', $_POST, 45);
-            
-            $error_code = $e->getCode();
-            $error_query = match($error_code) {
-                1001 => 'nonce_error',
-                1002 => 'permission_error',
-                default => 'creation_error'
-            };
-
-            wp_redirect(add_query_arg($error_query, 1, wp_get_referer()));
-            exit;
+    private static function sanitize_game_type($game_type) {
+        $clean_type = sanitize_key($game_type);
+        if (!in_array($clean_type, self::ALLOWED_GAME_TYPES)) {
+            return new WP_Error(
+                'invalid_game_type',
+                sprintf(
+                    esc_html__('Tipo di gioco non valido. Scegli tra: %s', 'eto'),
+                    implode(', ', array_keys(self::get_supported_games()))
+                )
+            );
         }
+        return $clean_type;
+    }
+
+    public static function ajax_get_tournament_details() {
+        $tournament_id = absint($_POST['tournament_id']);
+        $tournament = self::get($tournament_id);
+        
+        if (!$tournament) {
+            wp_send_json_error(__('Torneo non trovato', 'eto'));
+        }
+
+        $details = [
+            'name' => $tournament->name,
+            'format' => $tournament->format,
+            'game_type' => self::get_supported_games()[$tournament->game_type],
+            'start_date' => $tournament->start_date,
+            'end_date' => $tournament->end_date,
+            'max_teams' => $tournament->max_teams
+        ];
+
+        wp_send_json_success($details);
     }
 
     public static function admin_notices() {
@@ -512,40 +485,6 @@ class ETO_Tournament {
     }
 }
 
-    private static function sanitize_game_type($game_type) {
-        $clean_type = sanitize_key($game_type);
-        if (!in_array($clean_type, self::ALLOWED_GAME_TYPES)) {
-            return new WP_Error(
-                'invalid_game_type',
-                sprintf(
-                    esc_html__('Tipo di gioco non valido. Scegli tra: %s', 'eto'),
-                    implode(', ', array_keys(self::get_supported_games()))
-                )
-            );
-        }
-        return $clean_type;
-    }
-
-    public static function ajax_get_tournament_details() {
-        $tournament_id = absint($_POST['tournament_id']);
-        $tournament = self::get($tournament_id);
-        
-        if (!$tournament) {
-            wp_send_json_error(__('Torneo non trovato', 'eto'));
-        }
-
-        $details = [
-            'name' => $tournament->name,
-            'format' => $tournament->format,
-            'game_type' => self::get_supported_games()[$tournament->game_type],
-            'start_date' => $tournament->start_date,
-            'end_date' => $tournament->end_date,
-            'max_teams' => $tournament->max_teams
-        ];
-
-        wp_send_json_success($details);
-    }
-}
 
 // Registrazione hook finali
 add_action('admin_notices', ['ETO_Tournament', 'admin_notices']);

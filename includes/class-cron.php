@@ -92,6 +92,22 @@ class ETO_Cron {
         }
     } // Chiusura corretta
 
+public static function clear_scheduled_events() {
+    $events = [
+        'eto_hourly_tasks',
+        'eto_daily_cleanup',
+        'eto_daily_maintenance'
+    ];
+
+    foreach ($events as $event) {
+        $timestamp = wp_next_scheduled($event);
+        if ($timestamp) {
+            wp_unschedule_event($timestamp, $event);
+        }
+        wp_clear_scheduled_hook($event);
+    }
+}
+
     public static function daily_maintenance() {
         try {
             $installer_id = get_site_option(ETO_Installer::INSTALLER_META);

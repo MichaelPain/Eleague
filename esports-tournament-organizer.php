@@ -11,60 +11,68 @@ Text Domain: eto
 if (!defined('ABSPATH')) exit;
 
 // 1. DEFINIZIONE COSTANTI
-define('ETO_DEBUG', true);
-define('ETO_PLUGIN_DIR', untrailingslashit(WP_PLUGIN_DIR . '/' . dirname(plugin_basename(__FILE__))));
-define('ETO_DEBUG_LOG', ETO_PLUGIN_DIR . '/logs/debug.log');
+if (!defined('ETO_DEBUG')) define('ETO_DEBUG', true);
+if (!defined('ETO_PLUGIN_DIR')) {
+    define('ETO_PLUGIN_DIR', untrailingslashit(WP_PLUGIN_DIR . '/' . dirname(plugin_basename(__FILE__))));
+}
+if (!defined('ETO_DEBUG_LOG')) {
+    define('ETO_DEBUG_LOG', ETO_PLUGIN_DIR . '/logs/debug.log');
+}
 
 // 2. VERIFICA PERMESSI FILE SYSTEM
 $required_perms = [
     'directories' => [
-        ETO_PLUGIN_DIR . 'logs/' => 0755,
-        ETO_PLUGIN_DIR . 'uploads/' => 0755
+        ETO_PLUGIN_DIR . '/logs/' => 0755,
+        ETO_PLUGIN_DIR . '/uploads/' => 0755
     ],
     'files' => [
-        ETO_PLUGIN_DIR . 'includes/config.php' => 0600,
-        ETO_PLUGIN_DIR . 'keys/riot-api.key' => 0600
+        ETO_PLUGIN_DIR . '/includes/config.php' => 0600,
+        ETO_PLUGIN_DIR . '/keys/riot-api.key' => 0600
     ]
 ];
 
 foreach ($required_perms['directories'] as $path => $perm) {
     if (!is_dir($path)) {
         add_action('admin_notices', function() use ($path) {
-            echo '<div class="notice notice-error">';
-            echo '<p>' . sprintf(esc_html__('Directory non creata: %s', 'eto'), esc_html($path)) . '</p>';
-            echo '</div>';
+            echo '<div class="notice notice-error"><p>' 
+                . sprintf(esc_html__('Directory non creata: %s', 'eto'), esc_html($path)) 
+                . '</p></div>';
         });
-    } else if ((fileperms($path) & 0777) !== $perm) {
+    } elseif ((fileperms($path) & 0777) !== $perm) {
         add_action('admin_notices', function() use ($path, $perm) {
-            echo '<div class="notice notice-error">';
-            echo '<p>' . sprintf(esc_html__('Permesso directory errato: %o per %s', 'eto'), $perm, esc_html($path)) . '</p>';
-            echo '</div>';
+            echo '<div class="notice notice-error"><p>' 
+                . sprintf(esc_html__('Permesso directory errato: %o per %s', 'eto'), $perm, esc_html($path)) 
+                . '</p></div>';
         });
     }
 }
 
-foreach ($required_perms['files'] as $path => $perm) {
-    if (!file_exists($path)) {
-        add_action('admin_notices', function() use ($path) {
-            echo '<div class="notice notice-error">';
-            echo '<p>' . sprintf(esc_html__('File non trovato: %s', 'eto'), esc_html($path)) . '</p>';
-            echo '</div>';
+foreach ($required_perms['files'] as $file => $perm) {
+    if (!file_exists($file)) {
+        add_action('admin_notices', function() use ($file) {
+            echo '<div class="notice notice-error"><p>' 
+                . sprintf(esc_html__('File core mancante: %s', 'eto'), esc_html($file)) 
+                . '</p></div>';
         });
-    } else if ((fileperms($path) & 0777) !== $perm) {
-        add_action('admin_notices', function() use ($path, $perm) {
-            echo '<div class="notice notice-error">';
-            echo '<p>' . sprintf(esc_html__('Permesso file errato: %o per %s', 'eto'), $perm, esc_html($path)) . '</p>';
-            echo '</div>';
+    } elseif ((fileperms($file) & 0777) !== $perm) {
+        add_action('admin_notices', function() use ($file, $perm) {
+            echo '<div class="notice notice-error"><p>' 
+                . sprintf(esc_html__('Permesso file errato: %o per %s', 'eto'), $perm, esc_html($file)) 
+                . '</p></div>';
         });
     }
 }
+
 
 // 3. INCLUSIONI CORE CON VERIFICA
 $core_files = [
     'includes/config.php',
     'includes/utilities.php',
+    'admin/class-settings-register.php',
     'admin/admin-pages.php',
-    'public/shortcodes.php'
+    'public/shortcodes.php',
+    'public/class-checkin.php',
+    'public/displays.php'
 ];
 
 foreach ($core_files as $file) {
@@ -79,6 +87,21 @@ foreach ($core_files as $file) {
         require_once $full_path;
     }
 }
+
+spl_autoload_register(function($class) {
+    $prefix = 'ETO_';
+    if (strpos($class, $prefix) === 0) {
+        $class_name = str_replace($prefix, '', $class);
+        $file_name = 'class-' . strtolower(str_replace('_', '-', $class_name)) . '.php';
+        $file_path = ETO_PLUGIN_DIR . '/includes/' . $file_name;
+        
+        if (file_exists($file_path)) {
+            require_once $file_path;
+        } else {
+            error_log("[ETO] File mancante per la classe {$class}: {$file_path}");
+        }
+    }
+});
 
 // 4. GESTIONE ERRORI TORNEO
 add_action('admin_notices', function() {
